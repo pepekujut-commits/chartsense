@@ -1,0 +1,22 @@
+# Dependency directories
+node_modules/
+
+# Files created by the 'build' process
+build/
+dist/
+
+# Local configuration
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+
+# OS Metadata
+.DS_Store
+Thumbs.db
