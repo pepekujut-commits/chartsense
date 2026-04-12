@@ -4,6 +4,27 @@ const cors = require('cors');
 const fetch = require('node-fetch');
 const path = require('path');
 const fs = require('fs');
+const Stripe = require('stripe');
+const admin = require('firebase-admin');
+
+// ─── INITIALIZE SAAS SERVICES ───
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+
+// Firebase Admin initialization (Service Account via Env)
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+  } catch (e) {
+    console.warn('Firebase Admin init failed. Check FIREBASE_SERVICE_ACCOUNT Env var.');
+  }
+} else {
+  console.warn('FIREBASE_SERVICE_ACCOUNT missing. Auth verification disabled.');
+}
+
+const db = admin.apps.length ? admin.firestore() : null;
 
 const app = express();
 const PORT = process.env.PORT || 3005; // Switching from 3001 to bypass zombie processes and caching
@@ -33,7 +54,32 @@ const usageStats = {};
 const FREE_LIMIT = 3;
 
 // ─── ROUTES (API) ───
-app.get(['/api/status', '/status'], (req, res) => {
+app.get(['/api/status', '/status'], async (req, res) => {
+  const authHeader = req.headers.authorization;
+  let uid = null;
+
+  // Verify Firebase Token if present
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1]);
+      uid = decodedToken.uid;
+    } catch (e) {
+      console.warn('Invalid token');
+    }
+  }
+
+  if (uid && db) {
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      return res.json({
+        creditsRemaining: userData.isPro ? '∞' : (userData.credits !== undefined ? userData.credits : 3),
+        isPro: userData.isPro || false
+      });
+    }
+  }
+
+  // Fallback to IP-based for guests
   const ip = req.headers['x-forwarded-for'] || req.ip || 'unknown';
   if (!usageStats[ip]) usageStats[ip] = { count: 0, isPro: false };
   res.json({
@@ -42,10 +88,46 @@ app.get(['/api/status', '/status'], (req, res) => {
   });
 });
 
-app.post(['/api/checkout', '/checkout'], (req, res) => {
-  const ip = req.headers['x-forwarded-for'] || req.ip || 'unknown';
-  usageStats[ip].isPro = true;
-  res.json({ success: true, message: 'Upgraded to PRO' });
+app.post('/api/create-checkout-session', async (req, res) => {
+  const { priceId, userEmail, userId } = req.body;
+  
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId || 'price_1P...PLACEHOLDER', quantity: 1 }],
+      mode: 'subscription',
+      customer_email: userEmail,
+      client_reference_id: userId,
+      success_url: `${req.headers.origin}/?session_id={CHECKOUT_SESSION_ID}&status=success`,
+      cancel_url: `${req.headers.origin}/?status=cancel`,
+    });
+    res.json({ url: session.url });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const userId = session.client_reference_id;
+    
+    if (userId && db) {
+      await db.collection('users').doc(userId).set({ isPro: true }, { merge: true });
+      console.log(`User ${userId} upgraded to ELITE PRO.`);
+    }
+  }
+
+  res.json({ received: true });
 });
 
 app.get(['/api/screener', '/screener'], async (req, res) => {

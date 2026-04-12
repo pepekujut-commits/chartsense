@@ -687,18 +687,19 @@ body {
 }
 .verdict-tf { font-size: 12px; color: var(--text-muted); }
 
-/* Confidence ring */
-.confidence-ring-wrap { position: relative; width: 64px; height: 64px; flex-shrink: 0; }
-.confidence-ring { width: 64px; height: 64px; transform: rotate(-90deg); }
-.ring-bg { fill: none; stroke: var(--border2); stroke-width: 5; }
+/* Confidence & RR Gauges */
+.confidence-ring-wrap, .rr-ring-wrap { position: relative; width: 64px; height: 64px; flex-shrink: 0; }
+.confidence-ring, .rr-ring { width: 64px; height: 64px; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: var(--border); stroke-width: 4; }
 .ring-fill {
   fill: none;
   stroke: var(--green);
-  stroke-width: 5;
+  stroke-width: 4;
   stroke-linecap: round;
   stroke-dasharray: 163.4;
   stroke-dashoffset: 163.4;
-  transition: stroke-dashoffset 1s ease, stroke 0.3s;
+  transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.3s;
+  filter: drop-shadow(0 0 5px var(--green));
 }
 .confidence-pct {
   position: absolute;
@@ -948,6 +949,45 @@ body {
 .plan-features { list-style: none; margin-bottom: 28px; display: flex; flex-direction: column; gap: 10px; }
 .plan-features li { font-size: 14px; color: var(--text-muted); }
 .plan-features li:has(:not(✗)) { color: var(--text); }
+
+/* ─── SCREENER ENHANCEMENTS (V5) ─── */
+.screener-table tr { transition: background 0.3s ease; }
+.price-flash-up { animation: flash-green 1s ease-out; }
+.price-flash-down { animation: flash-red 1s ease-out; }
+
+@keyframes flash-green {
+  0% { background: rgba(0, 229, 160, 0.2); }
+  100% { background: transparent; }
+}
+@keyframes flash-red {
+  0% { background: rgba(255, 77, 106, 0.2); }
+  100% { background: transparent; }
+}
+
+.signal-badge {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.signal-badge.buy { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+.signal-badge.sell { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+.signal-badge.neutral { background: var(--surface-top); color: var(--text-muted); border: 1px solid var(--border); }
+
+/* ─── TRADE ARCHITECT V5 ─── */
+.order-ticket {
+  background: rgba(2, 6, 23, 0.4);
+  border: 1px solid var(--border-pro);
+  position: relative;
+  overflow: hidden;
+}
+.order-ticket::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--purple), transparent);
+}
 
 /* ─── MODAL ─── */
 .modal-overlay {
@@ -1522,15 +1562,31 @@ body {
 .tp-box strong { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--green); }
 
 .risk-reward-calculator {
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px dashed var(--border);
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 20px;
 }
 
-.rr-value { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 800; color: var(--yellow); }
+.rr-gauge-wrap {
+  width: 64px;
+  height: 64px;
+}
+
+.rr-meta {
+  flex: 1;
+}
+
+.rr-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
 
 /* Coming Soon Polishing */
 .coming-soon-box {

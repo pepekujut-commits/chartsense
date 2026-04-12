@@ -1,11 +1,27 @@
 const CONFIG = {
-  DEFAULT_MODEL: 'gemini-3-flash-preview', // Correct April 2026 flagship identifier
+  DEFAULT_MODEL: 'gemini-3-flash-preview',
   BACKEND_URL: '/api/analyze',
   STATUS_URL: '/api/status',
-  CHECKOUT_URL: '/api/checkout',
+  CHECKOUT_URL: '/api/create-checkout-session', // Real Stripe redirect endpoint
   HEALTH_URL: '/api/health',
   SCREENER_URL: '/api/screener'
 };
+
+// ─── FIREBASE CONFIG (TEMPLATE) ───
+// These will be populated from Saas_LAUNCH_GUIDE.md instructions
+const firebaseConfig = {
+  apiKey: "REPLACE_WITH_YOUR_KEY",
+  authDomain: "REPLACE_WITH_YOUR_DOMAIN.firebaseapp.com",
+  projectId: "REPLACE_WITH_YOUR_ID",
+  storageBucket: "REPLACE_WITH_YOUR_BUCKET.appspot.com",
+  messagingSenderId: "REPLACE_WITH_YOUR_SENDER_ID",
+  appId: "REPLACE_WITH_YOUR_APP_ID"
+};
+
+// Initialize Firebase if not already
+if (typeof firebase !== 'undefined') {
+  firebase.initializeApp(firebaseConfig);
+}
 
 // ─── STATE ───
 let state = {
@@ -121,12 +137,51 @@ const el = {
 
 // ─── INIT ───
 async function init() {
+  hydrateElements(); 
+  checkUrlParams(); // V5: Handle Stripe redirects
   await checkHealth();
-  await syncStatus();
   setupEventListeners();
-  checkAuth();
+  setupAuthListener();
   startLiveStats(); 
-  initScreener(); // V5: Start the real-time Binance feed
+  initScreener();
+  console.log("%c CHARTSENSE ELITE V5 ACTIVE ", "background: #8b5cf6; color: white; font-weight: bold; border-radius: 4px; padding: 2px 8px;");
+}
+
+function checkUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get('status');
+  if (status === 'success') {
+    alert('✨ INSTITUTIONAL ACCESS GRANTED. Welcome to the Elite tier.');
+    // Clean up URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  } else if (status === 'cancel') {
+    console.log('Institutional checkout aborted by user.');
+  }
+}
+
+function setupAuthListener() {
+  if (typeof firebase === 'undefined') return;
+  
+  firebase.auth().onAuthStateChanged(async (user) => {
+    state.user = user;
+    if (user) {
+      console.log('Institutional session active:', user.email);
+      await syncStatus(); // Sync Pro/Credits from Firestore
+    } else {
+      console.log('Awaiting institutional login...');
+      state.isPro = false;
+      state.creditsRemaining = 3;
+      updateUI();
+    }
+  });
+}
+
+function hydrateElements() {
+  for (const key in el) {
+    if (el[key] === null || el[key] === undefined) {
+      el[key] = document.getElementById(key);
+    }
+  }
 }
 
 /**
@@ -165,7 +220,13 @@ function startLiveStats() {
 
 async function syncStatus() {
   try {
-    const response = await fetch(CONFIG.STATUS_URL);
+    const headers = {};
+    if (state.user) {
+      const token = await firebase.auth().currentUser.getIdToken();
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(CONFIG.STATUS_URL, { headers });
     if (!response.ok) throw new Error('Network error');
     
     const data = await response.json();
@@ -175,7 +236,6 @@ async function syncStatus() {
     checkAnalyzeStatus();
   } catch (e) {
     console.warn('Backend sync deferred: using local state (Pro Trial Mode)');
-    // Fallback UI if backend is deploying
     updateCreditsUI();
   }
 }
@@ -238,20 +298,36 @@ function checkAuth() {
   }
 }
 
-function handleAuthSubmit(e) {
+async function handleAuthSubmit(e) {
   e.preventDefault();
   const email = document.getElementById('authEmail').value;
+  const pass = document.getElementById('authPass').value;
+  const btn = document.getElementById('signInBtn');
   
-  // Simulation: Accept any login
-  state.user = { email, id: 'user_' + Math.random().toString(36).substr(2, 9) };
-  localStorage.setItem('chartsense_user', JSON.stringify(state.user));
+  if (typeof firebase === 'undefined') return alert('Institutional Network Offline.');
   
-  el.authModal.classList.add('hidden');
-  updateAuthUI();
+  btn.disabled = true;
+  btn.textContent = 'AUTHENTICATING...';
 
-  if (state.pendingAction === 'checkout') {
-    state.pendingAction = null;
-    el.checkoutModal.classList.remove('hidden');
+  try {
+    // Attempt sign in, fallback to sign up
+    try {
+      await firebase.auth().signInWithEmailAndPassword(email, pass);
+    } catch (err) {
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        await firebase.auth().createUserWithEmailAndPassword(email, pass);
+      } else {
+        throw err;
+      }
+    }
+    
+    el.authModal.classList.add('hidden');
+    // Session state will be handled by setupAuthListener
+  } catch (err) {
+    alert(`Authentication Error: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
   }
 }
 
@@ -267,25 +343,17 @@ function handleUpgradeBtn() {
   }
 }
 
-// V5: Google Auth Simulation
-function handleGoogleLogin() {
-  // Simulate institutional Google OAuth flow
-  const mockEmail = `institutional.user.${Math.floor(Math.random() * 899) + 100}@gmail.com`;
-  
-  state.user = { 
-    email: mockEmail, 
-    id: 'google_' + Math.random().toString(36).substr(2, 9),
-    provider: 'google'
-  };
-  localStorage.setItem('chartsense_user', JSON.stringify(state.user));
-  
-  el.authModal.classList.add('hidden');
-  updateAuthUI();
-
-  if (state.pendingAction === 'checkout') {
-    state.pendingAction = null;
-    // Small delay for 'Professional Feel'
-    setTimeout(() => el.checkoutModal.classList.remove('hidden'), 400);
+// V5: Google Auth
+async function handleGoogleLogin() {
+  if (typeof firebase === 'undefined') return;
+  const provider = new firebase.auth.GoogleAuthProvider();
+  try {
+    const result = await firebase.auth().signInWithPopup(provider);
+    console.log('Google login valid:', result.user.email);
+    el.authModal.classList.add('hidden');
+  } catch (err) {
+    console.error('Google Auth Failed:', err);
+    alert('Institutional connection denied.');
   }
 }
 
@@ -301,9 +369,12 @@ function updateAuthUI() {
   }
 }
 
-function logout() {
+async function logout() {
+  if (typeof firebase !== 'undefined') {
+    await firebase.auth().signOut();
+  }
   state.user = null;
-  localStorage.removeItem('chartsense_user');
+  state.isPro = false;
   updateAuthUI();
   location.reload();
 }
@@ -356,35 +427,38 @@ function checkAnalyzeStatus() {
 
 // ─── MONETIZATION LOGIC ───
 async function handlePayment() {
+  if (!state.user) {
+    state.pendingAction = 'checkout';
+    el.authModal.classList.remove('hidden');
+    return;
+  }
+
   const btn = el.completeCheckout;
-  const originalText = btn.innerHTML;
-  
   btn.disabled = true;
-  btn.innerHTML = `<div class="spinner"></div> <span>Processing...</span>`;
-  
+  btn.textContent = 'REDIRECTING TO SECURE CHECKOUT...';
+
   try {
-    await new Promise(r => setTimeout(r, 2000));
-    
-    // Call server to upgrade (Uses IP-based persistence on backend)
-    const response = await fetch(CONFIG.CHECKOUT_URL, { method: 'POST' });
+    const response = await fetch('/api/create-checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: state.user.uid,
+        userEmail: state.user.email,
+        priceId: 'price_1P...PLACEHOLDER' // You will put your real Stripe Price ID here
+      })
+    });
+
     const data = await response.json();
-    
-    if (data.success) {
-      state.isPro = true;
-      el.checkoutModal.classList.add('hidden');
-      updateCreditsUI();
-      checkAnalyzeStatus();
-      alert('🚀 Welcome to Pro! You now have unlimited analyses.');
+    if (data.url) {
+      window.location.href = data.url; // Redirect to Stripe
+    } else {
+      throw new Error(data.error || 'Could not initiate institutional checkout.');
     }
-  } catch (e) {
-    console.error('Payment simulation failed:', e);
-    // Silent fail for demo purposes: just upgrade locally
-    state.isPro = true;
-    el.checkoutModal.classList.add('hidden');
-    updateCreditsUI();
+  } catch (err) {
+    alert(err.message);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = originalText;
+    btn.textContent = 'Start Your Subscription';
   }
 }
 
@@ -607,6 +681,9 @@ function renderResults(data, ticker, tf) {
   const offset = 163.4 - (163.4 * (data.confidence_score / 100));
   el.ringFill.style.strokeDashoffset = offset;
   
+  if (!el.pillsRow) el.pillsRow = document.getElementById('pillsRow');
+  if (!el.levelsGrid) el.levelsGrid = document.getElementById('levelsGrid');
+  
   if (data.verdict === 'BUY') el.ringFill.style.stroke = 'var(--green)';
   else if (data.verdict === 'SELL') el.ringFill.style.stroke = 'var(--red)';
   else el.ringFill.style.stroke = 'var(--yellow)';
@@ -661,10 +738,11 @@ function renderResults(data, ticker, tf) {
 }
 
 // ─── V5 ELITE MODULES (SCREENER & CHAT) ───
+let lastScreenerData = {};
 
 async function initScreener() {
   updateScreener();
-  setInterval(updateScreener, 10000); // 10s refresh for 'Institutional' feel
+  setInterval(updateScreener, 8000); // 8s refresh for 'Institutional' feel
 }
 
 async function updateScreener() {
@@ -675,29 +753,40 @@ async function updateScreener() {
     const data = await res.json();
     
     el.screenerBody.innerHTML = data.map(coin => {
-      const price = parseFloat(coin.lastPrice).toLocaleString(undefined, { minimumFractionDigits: 2 });
+      const price = parseFloat(coin.lastPrice);
+      const prevPrice = lastScreenerData[coin.symbol] || price;
+      const flashClass = price > prevPrice ? 'price-flash-up' : price < prevPrice ? 'price-flash-down' : '';
+      lastScreenerData[coin.symbol] = price;
+
+      const formattedPrice = price.toLocaleString(undefined, { minimumFractionDigits: 2 });
       const change = parseFloat(coin.priceChangePercent);
       const changeClass = change >= 0 ? 'price-up' : 'price-down';
       const indicator = change >= 2 ? 'BUY' : change <= -2 ? 'SELL' : 'NEUTRAL';
       const signalClass = indicator.toLowerCase();
       
       return `
-        <tr>
+        <tr class="${flashClass}">
           <td>
             <div class="ticker-name">
               ${coin.symbol.replace('USDT', '')}
               <span class="ticker-symbol">/USDT</span>
             </div>
           </td>
-          <td class="font-mono">${price}</td>
+          <td class="font-mono">${formattedPrice}</td>
           <td class="${changeClass} font-mono">${change >= 0 ? '+' : ''}${change.toFixed(2)}%</td>
           <td><span class="signal-badge ${signalClass}">${indicator}</span></td>
           <td class="font-mono text-dim" style="font-size: 11px;">${Math.abs(change) > 4 ? 'HIGH' : 'STABLE'}</td>
         </tr>
       `;
     }).join('');
+    
+    // Cleanup flash classes after animation
+    setTimeout(() => {
+       document.querySelectorAll('.price-flash-up, .price-flash-down').forEach(el => el.classList.remove('price-flash-up', 'price-flash-down'));
+    }, 1200);
+
   } catch (err) {
-    console.warn('Screener fetch failed (CORS or Network):', err);
+    console.warn('Screener fetch failed:', err);
   }
 }
 
@@ -716,33 +805,51 @@ async function sendChat() {
 
   try {
     const ticker = el.verdictTicker.textContent || 'Unknown Ticker';
+    const tf = el.verdictTf.textContent || 'Unknown TF';
     const context = el.reasoningBox.textContent;
     
-    const PROMPT = `You are TradeGPT, an institutional analyst assistant. 
-    Context: The user is looking at an analysis of ${ticker} on ${el.verdictTf.textContent || 'Unknown'} timeframe. 
-    Previous Analysis Summary: ${context}.
-    ${el.riskRow.textContent}
-    Question: ${msg}.
-    Reply concisely as a senior Bloomberg analyst. Focus on technical confirmations and volume profiles. No greetings.`;
+    const PROMPT = `You are TradeGPT, a senior institutional analyst from ChartSense AI. 
+    CURRENT CONTEXT: User analysis for ${ticker} on ${tf}. 
+    TECHNICAL SUMMARY: ${context}.
+    RISK PROFILE: ${el.riskRow.textContent}.
+    USER QUERY: ${msg}.
+    
+    REPLY PROTOCOL:
+    - Maintain a professional, data-driven "Bloomberg Terminal" tone.
+    - Provide specific levels (S/R, Liquidity) if available.
+    - Be concise. No greetings. High info-density only.`;
 
     const response = await fetch(CONFIG.BACKEND_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: "gemini-2.0-flash", // Use 2.0 Flash for speed in chat
+        model: "gemini-2.0-flash", 
         contents: [{ parts: [{ text: PROMPT }] }],
-        generationConfig: { temperature: 0.7 }
+        generationConfig: { temperature: 0.5 }
       })
     });
 
     const data = await response.json();
-    const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't process that request.";
+    const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Institutional core connection lost.";
     
     document.getElementById(loadingId).remove();
-    appendMessage('ai', aiResponse);
+    await typeMessage(aiResponse);
     
   } catch (err) {
-    document.getElementById(loadingId).textContent = "Error connecting to AI Network.";
+    document.getElementById(loadingId).textContent = "Institutional Network Latency Detected.";
+  }
+}
+
+async function typeMessage(text) {
+  const bubble = document.createElement('div');
+  bubble.className = `chat-bubble ai`;
+  el.chatMessages.appendChild(bubble);
+  
+  const words = text.split(' ');
+  for (let i = 0; i < words.length; i++) {
+    bubble.textContent += (i === 0 ? '' : ' ') + words[i];
+    el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+    await new Promise(r => setTimeout(r, 40)); // Smooth premium typing
   }
 }
 
@@ -755,6 +862,7 @@ function appendMessage(role, text) {
 }
 
 function calculateRR(levels) {
+  const rrRingFill = document.getElementById('rrRingFill');
   if (!el.rrRatio) return;
   
   const entry = parseFloat(levels.entry.replace(/[^0-9.]/g, ''));
@@ -763,6 +871,7 @@ function calculateRR(levels) {
 
   if (isNaN(entry) || isNaN(sl) || isNaN(tp3)) {
     el.rrRatio.textContent = '1:--';
+    if (rrRingFill) rrRingFill.style.strokeDashoffset = 163.4;
     return;
   }
 
@@ -770,6 +879,15 @@ function calculateRR(levels) {
   const reward = Math.abs(tp3 - entry);
   const ratio = (reward / risk).toFixed(2);
   
+  el.rrRatio.textContent = `1:${ratio}`;
+  
+  // Fill RR ring (scale 1:0 to 1:5+)
+  if (rrRingFill) {
+    const score = Math.min(100, (parseFloat(ratio) / 5) * 100);
+    const offset = 163.4 - (163.4 * (score / 100));
+    rrRingFill.style.strokeDashoffset = offset;
+    rrRingFill.style.stroke = ratio >= 2 ? 'var(--green)' : ratio >= 1 ? 'var(--yellow)' : 'var(--red)';
+  }
 }
 
 function showComingSoon(feature) {
