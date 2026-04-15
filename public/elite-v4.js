@@ -160,7 +160,8 @@ const el = {
   settingsModal: document.getElementById('settingsModal'),
   manageSubBtn: document.getElementById('manageSubBtn'),
   billingToggle: document.getElementById('billingToggle'),
-  headerCta: document.getElementById('headerCta'),
+  headerUpgradeBtn: document.getElementById('headerUpgradeBtn'),
+  headerSettingsBtn: document.getElementById('headerSettingsBtn'),
   
   // Settings detail elements
   settingsEmail: document.getElementById('settingsEmail'),
@@ -596,16 +597,9 @@ function updateCreditsUI() {
       };
     }
 
-    // Transform Header Button
-    if (el.headerCta) {
-      el.headerCta.innerHTML = '<i class="fas fa-cog"></i> Account Settings';
-      el.headerCta.classList.add('pro-active');
-      el.headerCta.onclick = (e) => {
-        e.preventDefault();
-        syncSettingsUI();
-        el.settingsModal.classList.remove('hidden');
-      };
-    }
+    // Update Header Buttons
+    if (el.headerUpgradeBtn) el.headerUpgradeBtn.classList.add('hidden');
+    if (el.headerSettingsBtn) el.headerSettingsBtn.classList.remove('hidden');
 
     if (el.upgradeBtn) {
       el.upgradeBtn.innerHTML = '✨ Pro Active';
@@ -623,13 +617,10 @@ function updateCreditsUI() {
     return;
   }
 
-  // Restore Header Button if not Pro
-  if (el.headerCta) {
-    el.headerCta.textContent = 'Get Access';
-    el.headerCta.classList.remove('pro-active');
-    el.headerCta.onclick = handleUpgradeBtn;
-  }
-
+  // Restore Header Buttons if not Pro
+  if (el.headerUpgradeBtn) el.headerUpgradeBtn.classList.remove('hidden');
+  if (el.headerSettingsBtn) el.headerSettingsBtn.classList.add('hidden');
+  
   el.creditsCount.textContent = state.creditsRemaining;
 
   if (state.creditsRemaining <= 0) {
