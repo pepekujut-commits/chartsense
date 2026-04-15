@@ -385,12 +385,19 @@ function setupEventListeners() {
 }
 
 // ─── AUTH LOGIC ───
-function checkAuth() {
-  const savedUser = localStorage.getItem('chartsense_user');
-  if (savedUser) {
-    state.user = JSON.parse(savedUser);
+function setupAuthListener() {
+  if (typeof firebase === 'undefined') return;
+  
+  firebase.auth().onAuthStateChanged((user) => {
+    console.log('Auth state change detected:', user ? user.email : 'LOGGED_OUT');
+    state.user = user;
     updateAuthUI();
-  }
+    
+    if (user && state.pendingAction === 'checkout') {
+      state.pendingAction = null;
+      el.checkoutModal.classList.remove('hidden');
+    }
+  });
 }
 
 function toggleAuthMode() {
@@ -578,6 +585,17 @@ function updateCreditsUI() {
     el.creditsCount.textContent = '∞';
     el.creditsCount.style.color = 'var(--purple)';
     
+    // Transform Header Button
+    if (el.headerCta) {
+      el.headerCta.innerHTML = '<i class="fas fa-cog"></i> Account Settings';
+      el.headerCta.classList.add('pro-active');
+      el.headerCta.onclick = (e) => {
+        e.preventDefault();
+        syncSettingsUI();
+        el.settingsModal.classList.remove('hidden');
+      };
+    }
+
     // Transform Header Button
     if (el.headerCta) {
       el.headerCta.innerHTML = '<i class="fas fa-cog"></i> Account Settings';
