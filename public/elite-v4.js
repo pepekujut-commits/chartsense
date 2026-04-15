@@ -36,7 +36,8 @@ let state = {
   isAnalyzing: false,
   healthChecked: false,
   pendingAction: null, // V5: Track intent across Auth flows
-  authMode: 'login' // 'login' or 'register'
+  authMode: 'login', // 'login' or 'register'
+  billingCycle: 'monthly' // 'monthly' or 'yearly'
 };
 
 // ─── HEALTH CHECK (DIAGNOSTICS) ───
@@ -157,7 +158,14 @@ const el = {
   openSettings: document.getElementById('openSettings'),
   closeSettings: document.getElementById('closeSettings'),
   settingsModal: document.getElementById('settingsModal'),
-  manageSubBtn: document.getElementById('manageSubBtn')
+  manageSubBtn: document.getElementById('manageSubBtn'),
+  billingToggle: document.getElementById('billingToggle'),
+  
+  // Settings detail elements
+  settingsEmail: document.getElementById('settingsEmail'),
+  settingsPlanBadge: document.getElementById('settingsPlanBadge'),
+  settingsCredits: document.getElementById('settingsCredits'),
+  settingsUID: document.getElementById('settingsUID')
 };
 
 // ─── INIT ───
@@ -319,13 +327,38 @@ function setupEventListeners() {
     if (!state.user) {
       state.pendingAction = 'checkout';
       el.authModal.classList.remove('hidden');
+    } else if (state.isPro) {
+      alert('✨ Your Elite Pro access is currently active.');
     } else {
       el.checkoutModal.classList.remove('hidden');
     }
   };
-  el.closeCheckout.onclick = () => el.checkoutModal.classList.add('hidden');
-  el.completeCheckout.onclick = handlePayment;
+  if (el.closeCheckout) el.closeCheckout.onclick = () => el.checkoutModal.classList.add('hidden');
+  if (el.completeCheckout) el.completeCheckout.onclick = handlePayment;
   el.exportPdfBtn.onclick = exportToPdf;
+
+  // Billing Toggle
+  if (el.billingToggle) {
+    const options = el.billingToggle.querySelectorAll('.toggle-option');
+    options.forEach(opt => {
+      opt.onclick = () => {
+        options.forEach(o => o.classList.remove('active'));
+        opt.classList.add('active');
+        state.billingCycle = opt.dataset.plan;
+        
+        // Update price display
+        const amount = document.querySelector('.price-display .amount');
+        const period = document.querySelector('.price-display .period');
+        if (state.billingCycle === 'yearly') {
+          amount.textContent = '279';
+          period.textContent = '/ year';
+        } else {
+          amount.textContent = '29';
+          period.textContent = '/ month';
+        }
+      };
+    });
+  }
 
   // Chat Handlers
   el.chatSendBtn.onclick = sendChat;
@@ -381,6 +414,23 @@ function toggleAuthMode() {
     // Bind the NEWLY created toSignUp link and update el reference
     el.toSignUp = document.getElementById('toSignUp');
     if (el.toSignUp) el.toSignUp.onclick = (e) => { e.preventDefault(); toggleAuthMode(); };
+  }
+}
+
+function syncSettingsUI() {
+  if (!state.user) return;
+  
+  el.settingsEmail.textContent = state.user.email;
+  el.settingsUID.textContent = state.user.uid;
+  
+  if (state.isPro) {
+    el.settingsPlanBadge.textContent = 'ELITE PRO';
+    el.settingsPlanBadge.classList.add('pro');
+    el.settingsCredits.textContent = 'Unlimited access active';
+  } else {
+    el.settingsPlanBadge.textContent = 'STARTER';
+    el.settingsPlanBadge.classList.remove('pro');
+    el.settingsCredits.textContent = `${state.creditsRemaining} analyses remaining`;
   }
 }
 
@@ -464,6 +514,17 @@ function updateAuthUI() {
     el.userProfile.classList.remove('hidden');
     el.userEmailAddress.textContent = state.user.email;
     el.userAvatar.textContent = state.user.email.charAt(0).toUpperCase();
+    
+    // Auto-sync status from Firestore on login
+    const db = firebase.firestore();
+    db.collection('users').doc(state.user.uid).onSnapshot(doc => {
+      if (doc.exists) {
+        const data = doc.data();
+        state.isPro = data.isPro || false;
+        state.creditsRemaining = data.creditsRemaining !== undefined ? data.creditsRemaining : state.creditsRemaining;
+        updateCreditsUI();
+      }
+    });
   } else {
     el.openAuth.classList.remove('hidden');
     el.userProfile.classList.add('hidden');
@@ -498,13 +559,25 @@ function handleFile(file) {
 
 // ─── CREDITS & STATUS ───
 function updateCreditsUI() {
+  const pricingBtn = document.querySelector('#pricing .price-card.featured .btn-primary');
+
   if (state.isPro) {
     el.creditsCount.textContent = '∞';
     el.creditsCount.classList.remove('out');
     el.creditsCount.style.color = 'var(--purple)';
-    el.upgradeBtn.innerHTML = '✨ Pro Active';
-    el.upgradeBtn.style.color = 'var(--purple)';
-    el.upgradeBtn.disabled = true;
+    
+    if (el.upgradeBtn) {
+      el.upgradeBtn.innerHTML = '✨ Pro Active';
+      el.upgradeBtn.classList.add('pro-active');
+      el.upgradeBtn.disabled = true;
+    }
+
+    if (pricingBtn) {
+      pricingBtn.innerHTML = '✨ Plan Active';
+      pricingBtn.classList.add('pro-active');
+      pricingBtn.disabled = true;
+    }
+
     el.paywallOverlay.classList.add('hidden');
     return;
   }
@@ -538,6 +611,12 @@ async function handlePayment() {
   btn.disabled = true;
   btn.textContent = 'REDIRECTING TO SECURE CHECKOUT...';
 
+  // Find the right price ID. In prod, you should use environment variables.
+  const MONTHLY_PRICE = 'price_1TMSI6V05gkWPOqDDhDusUlG';
+  const YEARLY_PRICE = 'price_1Q5...YOUR_YEARLY_ID_HERE'; // User needs to update this
+  
+  const selectedPrice = state.billingCycle === 'yearly' ? YEARLY_PRICE : MONTHLY_PRICE;
+
   try {
     const response = await fetch('/api/create-checkout-session', {
       method: 'POST',
@@ -545,7 +624,7 @@ async function handlePayment() {
       body: JSON.stringify({
         userId: state.user.uid,
         userEmail: state.user.email,
-        priceId: 'price_1TMSI6V05gkWPOqDDhDusUlG' // Set in Vercel env
+        priceId: selectedPrice
       })
     });
 

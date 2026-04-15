@@ -1798,3 +1798,7 @@ body {
 
 .settings-footer p { margin: 0; }
 
+
+/* ¦¦¦ PRO ACTIVE STATES ¦¦¦ */
+.btn-primary.pro-active, .btn-ghost.pro-active, .link-btn-pro.pro-active { background: var(--purple-glow) !important; color: white !important; border: 1px solid var(--purple) !important; cursor: default !important; pointer-events: none; opacity: 0.8; }
+.status-badge.pro { background: var(--purple-glow); color: var(--purple); border: 1px solid var(--purple); }
