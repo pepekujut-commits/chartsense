@@ -182,6 +182,43 @@ app.post('/api/create-checkout-session', async (req, res) => {
   }
 });
 
+app.post('/api/create-portal-session', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const token = authHeader.split('Bearer ')[1];
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    const uid = decodedToken.uid;
+
+    if (!db) return res.status(500).json({ error: 'Database not initialized' });
+
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (!userDoc.exists || !userDoc.data().stripeCustomer) {
+      return res.status(400).json({ error: 'No active subscription found. Upgrade first.' });
+    }
+
+    const customerId = userDoc.data().stripeCustomer;
+
+    if (!stripe) {
+      // Mock portal for dev
+      return res.json({ url: 'https://billing.stripe.com/p/session/test_mock_portal' });
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${req.headers.origin}/`,
+    });
+
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Portal Session Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/history', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

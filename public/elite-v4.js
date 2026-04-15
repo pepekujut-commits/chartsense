@@ -151,7 +151,13 @@ const el = {
   signInBtn: document.getElementById('signInBtn'),
   googleBtn: document.getElementById('googleBtn'),
   toSignUp: document.getElementById('toSignUp'),
-  authSwitch: document.getElementById('authSwitch')
+  authSwitch: document.getElementById('authSwitch'),
+  
+  // Settings
+  openSettings: document.getElementById('openSettings'),
+  closeSettings: document.getElementById('closeSettings'),
+  settingsModal: document.getElementById('settingsModal'),
+  manageSubBtn: document.getElementById('manageSubBtn')
 };
 
 // ─── INIT ───
@@ -283,6 +289,15 @@ function setupEventListeners() {
   if (el.googleBtn) el.googleBtn.onclick = handleGoogleLogin;
   if (el.userAvatar) el.userAvatar.onclick = () => el.userMenu.classList.toggle('hidden');
   if (el.logoutBtn) el.logoutBtn.onclick = logout;
+  
+  if (el.openSettings) el.openSettings.onclick = (e) => {
+    e.preventDefault();
+    el.userMenu.classList.add('hidden');
+    syncSettingsUI();
+    el.settingsModal.classList.remove('hidden');
+  };
+  if (el.closeSettings) el.closeSettings.onclick = () => el.settingsModal.classList.add('hidden');
+  if (el.manageSubBtn) el.manageSubBtn.onclick = handleManageSubscription;
   if (el.toSignUp) {
     el.toSignUp.onclick = (e) => { 
       e.preventDefault(); 
@@ -522,13 +537,13 @@ async function handlePayment() {
       body: JSON.stringify({
         userId: state.user.uid,
         userEmail: state.user.email,
-        priceId: 'price_1P...PLACEHOLDER' // You will put your real Stripe Price ID here
+        priceId: 'price_1Q5zYkK...PLACEHOLDER' // Set in Vercel env
       })
     });
 
     const data = await response.json();
     if (data.url) {
-      window.location.href = data.url; // Redirect to Stripe
+      window.location.href = data.url;
     } else {
       throw new Error(data.error || 'Could not initiate institutional checkout.');
     }
@@ -537,6 +552,64 @@ async function handlePayment() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Start Your Subscription';
+  }
+}
+
+async function handleManageSubscription() {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  const originalText = el.manageSubBtn.textContent;
+  el.manageSubBtn.textContent = 'OPENING BILLING PORTAL...';
+  el.manageSubBtn.disabled = true;
+
+  try {
+    const token = await user.getIdToken();
+    const response = await fetch('/api/create-portal-session', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    const data = await response.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      throw new Error(data.error || 'Upgrade to Pro first to manage subscription.');
+    }
+  } catch (err) {
+    alert('Billing node error: ' + err.message);
+    el.manageSubBtn.textContent = originalText;
+    el.manageSubBtn.disabled = false;
+  }
+}
+
+function syncSettingsUI() {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  const emailDisplay = document.getElementById('settingsEmail');
+  const uidDisplay = document.getElementById('settingsUID');
+  const badge = document.getElementById('settingsPlanBadge');
+  const credits = document.getElementById('settingsCredits');
+
+  if (emailDisplay) emailDisplay.textContent = user.email;
+  if (uidDisplay) uidDisplay.textContent = user.uid.substring(0, 8) + '...';
+
+  if (state.isPro) {
+    if (badge) {
+      badge.textContent = 'ELITE PRO';
+      badge.className = 'status-badge pro';
+    }
+    if (credits) credits.textContent = 'Unlimited access enabled';
+  } else {
+    if (badge) {
+      badge.textContent = 'STARTER (Free)';
+      badge.className = 'status-badge';
+    }
+    if (credits) credits.textContent = `${state.creditsRemaining} analyses remaining`;
   }
 }
 

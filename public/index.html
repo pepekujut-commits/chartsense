@@ -133,6 +133,7 @@
           <div class="user-menu dropdown hidden" id="userMenu">
               <div class="menu-header" id="userEmailAddress">user@email.com</div>
               <a href="#" class="menu-item" id="historyBtn">📜 Analysis History</a>
+              <a href="#" class="menu-item" id="openSettings">⚙️ Account Settings</a>
               <a href="#" class="menu-item" id="logoutBtn">Log Out</a>
           </div>
         </div>
@@ -141,6 +142,48 @@
       </div>
     </div>
   </header>
+  
+  <!-- ─── SETTINGS MODAL (V5 ELITE) ─── -->
+  <div id="settingsModal" class="modal-overlay hidden">
+    <div class="modal-box settings-box">
+      <button class="modal-close" id="closeSettings">✕</button>
+      <div class="settings-header">
+        <h2 class="modal-title">Account Settings</h2>
+        <p class="modal-desc">Manage your institutional profile and elite subscription.</p>
+      </div>
+      
+      <div class="settings-content">
+        <div class="settings-group">
+          <label>Institutional Email</label>
+          <div class="settings-value" id="settingsEmail">---</div>
+        </div>
+        
+        <div class="settings-group">
+          <label>Plan Status</label>
+          <div class="settings-status-box">
+            <div id="settingsPlanBadge" class="status-badge">Starter</div>
+            <div class="status-meta">
+              <span id="settingsCredits">3 analyses remaining</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="settings-actions">
+           <button class="btn-primary btn-full" id="manageSubBtn">
+             <i class="fas fa-credit-card"></i> Manage Subscription
+           </button>
+           <button class="btn-ghost btn-full" onclick="alert('Password reset link sent to your institutional email.')">
+             Reset Password
+           </button>
+        </div>
+        
+        <div class="settings-footer">
+          <p>ChartSense ID: <span id="settingsUID">---</span></p>
+          <p>Institutional Node: Verified (v1.2.5)</p>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- ─── COMING SOON MODAL (V5) ─── -->
   <div id="comingSoonModal" class="modal-overlay hidden">
