@@ -532,14 +532,39 @@ function updateAuthUI() {
     el.userEmailAddress.textContent = state.user.email;
     el.userAvatar.textContent = state.user.email.charAt(0).toUpperCase();
     
+    // Ensure email is tracked in Firestore for lookup
+    const db = firebase.firestore();
+    const userRef = db.collection('users').doc(state.user.uid);
+    userRef.set({ 
+      email: state.user.email,
+      lastLogin: new Date().toISOString() 
+    }, { merge: true });
+
     // Auto-sync status from Firestore on login
     console.log('--- STARTING PRO STATUS SYNC (Firestore) ---');
-    const db = firebase.firestore();
-    db.collection('users').doc(state.user.uid).onSnapshot(doc => {
+    userRef.onSnapshot(doc => {
       console.log('Firestore update detected for user:', state.user.uid);
       if (doc.exists) {
         const data = doc.data();
         console.log('Current Firestore Data:', data);
+        
+        // Final Fallback: Check if they are in the pro_backlog (due to pre-sync payment)
+        if (!data.isPro) {
+          db.collection('pro_backlog').doc(state.user.email.toLowerCase()).get().then(backDoc => {
+            if (backDoc.exists) {
+              console.log('✨ MATCH FOUND IN PRO BACKLOG! Migrating user to Pro status...');
+              const backData = backDoc.data();
+              userRef.set({
+                isPro: true,
+                stripeCustomer: backData.stripeCustomer,
+                subscriptionId: backData.subscriptionId
+              }, { merge: true });
+              // Backlog entry is no longer needed
+              backDoc.ref.delete();
+            }
+          });
+        }
+
         state.isPro = data.isPro || false;
         state.creditsRemaining = data.creditsRemaining !== undefined ? data.creditsRemaining : state.creditsRemaining;
         
@@ -550,6 +575,8 @@ function updateAuthUI() {
         updateCreditsUI();
       } else {
         console.warn('No Firestore document found for user yet.');
+        // If no doc exists, create it with email for future lookups
+        userRef.set({ email: state.user.email, creditsRemaining: 3, isPro: false });
       }
     }, err => {
       console.error('Firestore Sync Error:', err);

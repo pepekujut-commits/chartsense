@@ -73,12 +73,30 @@ app.post('/api/webhook', express.raw({type: 'application/json'}), async (req, re
 
     if (db) {
       try {
-        // Fallback: If userId missing, find by email
+        // Fallback: If userId missing, find by email (Case-Insensitive check)
         if (!userId && customerEmail) {
           console.log(`Searching for user by email: ${customerEmail}`);
-          const userQuery = await db.collection('users').where('email', '==', customerEmail).limit(1).get();
+          const emailLower = customerEmail.toLowerCase();
+          
+          // Try exact match first, then lowercase
+          let userQuery = await db.collection('users').where('email', '==', customerEmail).limit(1).get();
+          if (userQuery.empty) {
+            userQuery = await db.collection('users').where('email', '==', emailLower).limit(1).get();
+          }
+
           if (!userQuery.empty) {
             userId = userQuery.docs[0].id;
+          } else {
+            // CRITICAL: If still not found, create a placeholder Pro record by email
+            // This ensures they get access as soon as they log in with this email later
+            console.warn(`User document not found for ${customerEmail}. Creating pre-fulfillment record.`);
+            await db.collection('pro_backlog').doc(emailLower).set({
+              email: emailLower,
+              stripeCustomer: session.customer,
+              subscriptionId: session.subscription,
+              isPro: true,
+              timestamp: new Date().toISOString()
+            });
           }
         }
 
