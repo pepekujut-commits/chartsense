@@ -537,7 +537,7 @@ async function handlePayment() {
       body: JSON.stringify({
         userId: state.user.uid,
         userEmail: state.user.email,
-        priceId: 'price_1Q5zYkK...PLACEHOLDER' // Set in Vercel env
+        priceId: 'price_1TMSI6V05gkWPOqDDhDusUlG' // Set in Vercel env
       })
     });
 
