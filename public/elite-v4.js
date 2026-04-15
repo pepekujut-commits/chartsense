@@ -426,6 +426,11 @@ function toggleAuthMode() {
   }
 }
 
+function openSettingsModal() {
+  syncSettingsUI();
+  if (el.settingsModal) el.settingsModal.classList.remove('hidden');
+}
+
 function syncSettingsUI() {
   if (!state.user) return;
   
