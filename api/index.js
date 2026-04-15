@@ -8,7 +8,16 @@ const Stripe = require('stripe');
 const admin = require('firebase-admin');
 
 // ─── INITIALIZE SAAS SERVICES ───
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+let stripe;
+try {
+  if (process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY !== 'sk_test_...') {
+    stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+  } else {
+    console.warn('STRIPE_SECRET_KEY missing or placeholder. Payments will run in DEMO MOCK mode.');
+  }
+} catch (e) {
+  console.warn('Stripe init failed:', e.message);
+}
 
 // Firebase Admin initialization (Service Account via Env)
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
@@ -17,11 +26,12 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
+    console.log('Firebase Admin initialized successfully.');
   } catch (e) {
-    console.warn('Firebase Admin init failed. Check FIREBASE_SERVICE_ACCOUNT Env var.');
+    console.warn('Firebase Admin init failed. Check FIREBASE_SERVICE_ACCOUNT format.');
   }
 } else {
-  console.warn('FIREBASE_SERVICE_ACCOUNT missing. Auth verification disabled.');
+  console.warn('FIREBASE_SERVICE_ACCOUNT missing. Auth verification and DB features will be limited.');
 }
 
 const db = admin.apps.length ? admin.firestore() : null;
@@ -31,6 +41,50 @@ const PORT = process.env.PORT || 3005; // Switching from 3001 to bypass zombie p
 
 // ─── MIDDLEWARE ───
 app.use(cors());
+
+// Webhook route must come before express.json() for raw body access
+app.post('/api/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  let event;
+
+  try {
+    if (stripe && webhookSecret && sig) {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } else {
+      // Manual event simulation for testing if secret is missing
+      console.warn('STRIPE_WEBHOOK_SECRET or Signature missing. Using raw body (UNSAFE).');
+      event = JSON.parse(req.body);
+    }
+  } catch (err) {
+    console.error(`Webhook Error: ${err.message}`);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle the event
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const userId = session.client_reference_id;
+    
+    if (userId && db) {
+      try {
+        await db.collection('users').doc(userId).set({ 
+          isPro: true,
+          stripeCustomer: session.customer,
+          subscriptionId: session.subscription,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        console.log(`[STRIPE] User ${userId} upgraded to ELITE PRO via Webhook.`);
+      } catch (e) {
+        console.error('Webhook DB Update Failed:', e.message);
+      }
+    }
+  }
+
+  res.json({received: true});
+});
+
 app.use(express.json({ limit: '10mb' }));
 
 // ─── HEALTH CHECK (DIAGNOSTICS) ───
@@ -90,18 +144,66 @@ app.get(['/api/status', '/status'], async (req, res) => {
 
 app.post('/api/create-checkout-session', async (req, res) => {
   const { priceId, userEmail, userId } = req.body;
+  const realPriceId = process.env.STRIPE_PRICE_ID || priceId || 'price_1P...PLACEHOLDER';
   
+  // If Stripe is not configured, simulate a successful checkout for development
+  if (!stripe) {
+    console.log(`[MOCK CHECKOUT] User ${userEmail} initiated update. Redirecting to success...`);
+    // In mock mode, we immediately upgrade the user if DB is available, or just return a dummy URL
+    if (userId && db) {
+      setTimeout(async () => {
+        try {
+          await db.collection('users').doc(userId).set({ 
+            isPro: true,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+          console.log(`[MOCK] User ${userId} upgraded to ELITE PRO (Mock DB Write).`);
+        } catch (e) { console.error('Mock DB Write failed:', e); }
+      }, 1000);
+    }
+    return res.json({ url: `${req.headers.origin}/?status=success&mock=true` });
+  }
+
   try {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
-      line_items: [{ price: priceId || 'price_1P...PLACEHOLDER', quantity: 1 }],
+      line_items: [{ price: realPriceId, quantity: 1 }],
       mode: 'subscription',
       customer_email: userEmail,
       client_reference_id: userId,
+      metadata: { userId: userId },
       success_url: `${req.headers.origin}/?session_id={CHECKOUT_SESSION_ID}&status=success`,
       cancel_url: `${req.headers.origin}/?status=cancel`,
     });
     res.json({ url: session.url });
+  } catch (error) {
+    console.error('Stripe Session Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/history', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const token = authHeader.split('Bearer ')[1];
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    const uid = decodedToken.uid;
+
+    if (!db) return res.status(500).json({ error: 'Database not initialized' });
+
+    const snapshots = await db.collection('users').doc(uid).collection('analyses')
+      .orderBy('timestamp', 'desc')
+      .limit(10)
+      .get();
+
+    const history = [];
+    snapshots.forEach(doc => history.push({ id: doc.id, ...doc.data() }));
+    
+    res.json(history);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -183,6 +285,30 @@ app.post(['/api/analyze', '/analyze'], async (req, res) => {
     if (response.ok) {
       if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
         console.log(`[Gemini 3 Flash] SUCCESS:`, data.candidates[0].content.parts[0].text);
+        
+        // Save to History (V5 Elite)
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ') && db) {
+          try {
+            const token = authHeader.split('Bearer ')[1];
+            const decodedToken = await admin.auth().verifyIdToken(token);
+            const uid = decodedToken.uid;
+            
+            // Extract the result if JSON
+            const rawText = data.candidates[0].content.parts[0].text;
+            // Simple extraction (regex) for safety
+            const jsonPart = rawText.match(/\{[\s\S]*\}/)?.[0] || rawText;
+            
+            await db.collection('users').doc(uid).collection('analyses').add({
+              timestamp: new Date().toISOString(),
+              result: jsonPart,
+              model: analysisModel
+            });
+            console.log(`[DB] Analysis saved for user ${uid}`);
+          } catch (e) {
+            console.warn('Analysis save failed (deferred):', e.message);
+          }
+        }
       } else {
         console.warn(`[Gemini 3 Flash] EMPTY/ERROR:`, JSON.stringify(data, null, 2));
       }

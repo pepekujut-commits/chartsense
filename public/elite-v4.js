@@ -1,21 +1,24 @@
+console.log('--- CHARTSENSE BOOTING ---');
+alert('INSTITUTIONAL SYNC STARTED (v2026.04.14-FINAL)');
 const CONFIG = {
   DEFAULT_MODEL: 'gemini-3-flash-preview',
   BACKEND_URL: '/api/analyze',
   STATUS_URL: '/api/status',
   CHECKOUT_URL: '/api/create-checkout-session', // Real Stripe redirect endpoint
   HEALTH_URL: '/api/health',
-  SCREENER_URL: '/api/screener'
+  SCREENER_URL: '/api/screener',
+  HISTORY_URL: '/api/history'
 };
 
 // ─── FIREBASE CONFIG (TEMPLATE) ───
 // These will be populated from Saas_LAUNCH_GUIDE.md instructions
 const firebaseConfig = {
-  apiKey: "REPLACE_WITH_YOUR_KEY",
-  authDomain: "REPLACE_WITH_YOUR_DOMAIN.firebaseapp.com",
-  projectId: "REPLACE_WITH_YOUR_ID",
-  storageBucket: "REPLACE_WITH_YOUR_BUCKET.appspot.com",
-  messagingSenderId: "REPLACE_WITH_YOUR_SENDER_ID",
-  appId: "REPLACE_WITH_YOUR_APP_ID"
+  apiKey: "AIzaSyDpXljLX8gyjwFQfvqTkYOKga7EC79gTgk",
+  authDomain: "chartsense-ce27a.firebaseapp.com",
+  projectId: "chartsense-ce27a",
+  storageBucket: "chartsense-ce27a.firebasestorage.app",
+  messagingSenderId: "382076085918",
+  appId: "1:382076085918:web:b929454acc8496eb9d3d8f",
 };
 
 // Initialize Firebase if not already
@@ -32,7 +35,8 @@ let state = {
   selectedFile: null,
   isAnalyzing: false,
   healthChecked: false,
-  pendingAction: null // V5: Track intent across Auth flows
+  pendingAction: null, // V5: Track intent across Auth flows
+  authMode: 'login' // 'login' or 'register'
 };
 
 // ─── HEALTH CHECK (DIAGNOSTICS) ───
@@ -45,7 +49,7 @@ async function checkHealth() {
       const data = await res.json();
       dot.classList.remove('err');
       dot.classList.add('ok');
-      
+
       let tooltip = `API Connected (v${data.version})`;
       if (!data.hasApiKey || data.apiKeyNote === 'Missing') {
         tooltip += ' - ACTION REQUIRED: Paste your NEW Gemini API Key into .env';
@@ -82,7 +86,7 @@ const el = {
   paywallNote: document.getElementById('paywallNote'),
   upgradeBtn: document.getElementById('upgradeBtn'),
   paywallOverlay: document.getElementById('paywallOverlay'),
-  
+
   resultsPlaceholder: document.getElementById('resultsPlaceholder'),
   resultsPanel: document.getElementById('resultsPanel'),
   resultsContent: document.getElementById('resultsContent'),
@@ -96,7 +100,7 @@ const el = {
   reasoningBox: document.getElementById('reasoningBox'),
   riskRow: document.getElementById('riskRow'),
   exportPdfBtn: document.getElementById('exportPdfBtn'),
-  
+
   // V3 Elite Elements
   terminalOverlay: document.getElementById('terminalOverlay'),
   terminalBody: document.getElementById('terminalBody'),
@@ -104,7 +108,7 @@ const el = {
   metricRsi: document.getElementById('metricRsi'),
   metricVol: document.getElementById('metricVol'),
   metricSmc: document.getElementById('metricSmc'),
-  
+
   // V4 Setup Elements
   setupEntry: document.getElementById('setupEntry'),
   setupSl: document.getElementById('setupSl'),
@@ -122,27 +126,42 @@ const el = {
   userMenu: document.getElementById('userMenu'),
   userEmailAddress: document.getElementById('userEmailAddress'),
   logoutBtn: document.getElementById('logoutBtn'),
-  
+
   checkoutModal: document.getElementById('checkoutModal'),
   closeCheckout: document.getElementById('closeCheckout'),
   completeCheckout: document.getElementById('completeCheckout'),
-  
+
   // V5 Elite Elements
   screenerBody: document.getElementById('screenerBody'),
   chatMessages: document.getElementById('chatMessages'),
   chatInput: document.getElementById('chatInput'),
   chatSendBtn: document.getElementById('chatSendBtn'),
-  rrRatio: document.getElementById('rrRatio')
+  rrRatio: document.getElementById('rrRatio'),
+
+  // V5 History Elements
+  historyPanel: document.getElementById('historyPanel'),
+  historyList: document.getElementById('historyList'),
+  historyBtn: document.getElementById('historyBtn'),
+  closeHistory: document.getElementById('closeHistory'),
+  copySetupBtn: document.getElementById('copySetupBtn'),
+
+  // Auth Modal Elements
+  authTitle: document.getElementById('authTitle'),
+  authDesc: document.getElementById('authDesc'),
+  signInBtn: document.getElementById('signInBtn'),
+  googleBtn: document.getElementById('googleBtn'),
+  toSignUp: document.getElementById('toSignUp'),
+  authSwitch: document.getElementById('authSwitch')
 };
 
 // ─── INIT ───
 async function init() {
-  hydrateElements(); 
-  checkUrlParams(); // V5: Handle Stripe redirects
-  await checkHealth();
-  setupEventListeners();
+  hydrateElements();
+  setupEventListeners(); // Move to top so UI is interactive immediately
+  checkUrlParams();
+  checkHealth(); // Don't await, let it run in background
   setupAuthListener();
-  startLiveStats(); 
+  startLiveStats();
   initScreener();
   console.log("%c CHARTSENSE ELITE V5 ACTIVE ", "background: #8b5cf6; color: white; font-weight: bold; border-radius: 4px; padding: 2px 8px;");
 }
@@ -161,7 +180,7 @@ function checkUrlParams() {
 
 function setupAuthListener() {
   if (typeof firebase === 'undefined') return;
-  
+
   firebase.auth().onAuthStateChanged(async (user) => {
     state.user = user;
     if (user) {
@@ -171,14 +190,14 @@ function setupAuthListener() {
       console.log('Awaiting institutional login...');
       state.isPro = false;
       state.creditsRemaining = 3;
-      updateUI();
+      updateAuthUI();
     }
   });
 }
 
 function hydrateElements() {
   for (const key in el) {
-    if (el[key] === null || el[key] === undefined) {
+    if (el[key] === null || el[key] === undefined || (el[key] instanceof HTMLElement && !document.contains(el[key]))) {
       el[key] = document.getElementById(key);
     }
   }
@@ -228,7 +247,7 @@ async function syncStatus() {
 
     const response = await fetch(CONFIG.STATUS_URL, { headers });
     if (!response.ok) throw new Error('Network error');
-    
+
     const data = await response.json();
     state.creditsRemaining = data.creditsRemaining;
     state.isPro = data.isPro;
@@ -244,7 +263,7 @@ function setupEventListeners() {
   // Upload handlers
   el.dropzone.onclick = () => el.fileInput.click();
   el.fileInput.onchange = (e) => handleFile(e.target.files[0]);
-  
+
   el.dropzone.ondragover = (e) => { e.preventDefault(); el.dropzone.classList.add('drag-over'); };
   el.dropzone.ondragleave = () => el.dropzone.classList.remove('drag-over');
   el.dropzone.ondrop = (e) => {
@@ -257,11 +276,20 @@ function setupEventListeners() {
   el.analyzeBtn.onclick = startAnalysis;
 
   // Auth Handlers
-  el.openAuth.onclick = () => el.authModal.classList.remove('hidden');
-  el.closeAuth.onclick = () => el.authModal.classList.add('hidden');
-  el.authForm.onsubmit = handleAuthSubmit;
-  el.userAvatar.onclick = () => el.userMenu.classList.toggle('hidden');
-  el.logoutBtn.onclick = logout;
+  console.log('Attaching auth listeners...', !!el.authForm);
+  if (el.openAuth) el.openAuth.onclick = () => el.authModal.classList.remove('hidden');
+  if (el.closeAuth) el.closeAuth.onclick = () => el.authModal.classList.add('hidden');
+  if (el.authForm) el.authForm.onsubmit = handleAuthSubmit;
+  if (el.googleBtn) el.googleBtn.onclick = handleGoogleLogin;
+  if (el.userAvatar) el.userAvatar.onclick = () => el.userMenu.classList.toggle('hidden');
+  if (el.logoutBtn) el.logoutBtn.onclick = logout;
+  if (el.toSignUp) {
+    el.toSignUp.onclick = (e) => { 
+      e.preventDefault(); 
+      console.log('Toggling auth mode...');
+      toggleAuthMode(); 
+    };
+  }
 
   // Checkout Handlers
   el.upgradeBtn.onclick = () => {
@@ -279,6 +307,16 @@ function setupEventListeners() {
   // Chat Handlers
   el.chatSendBtn.onclick = sendChat;
   el.chatInput.onkeypress = (e) => { if (e.key === 'Enter') sendChat(); };
+
+  // History Handlers
+  if (el.historyBtn) el.historyBtn.onclick = () => {
+    el.historyPanel.classList.remove('hidden');
+    fetchHistory();
+  };
+  if (el.closeHistory) el.closeHistory.onclick = () => el.historyPanel.classList.add('hidden');
+
+  // Ticket Actions
+  if (el.copySetupBtn) el.copySetupBtn.onclick = copySetupToClipboard;
 
   // Generic close for modals and menus
   window.onclick = (event) => {
@@ -298,36 +336,63 @@ function checkAuth() {
   }
 }
 
+function toggleAuthMode() {
+  state.authMode = state.authMode === 'login' ? 'register' : 'login';
+  console.log('Switching Auth Mode to:', state.authMode);
+
+  if (state.authMode === 'register') {
+    el.authTitle.textContent = 'Create Elite Account';
+    el.authDesc.textContent = 'Join 50,000+ traders and get institutional-grade AI analysis.';
+    el.signInBtn.textContent = 'Create Account';
+    el.authSwitch.innerHTML = 'Already have an account? <a href="#" id="toSignIn">Sign in</a>';
+    
+    // Bind the NEWLY created toSignIn link
+    const toSignIn = document.getElementById('toSignIn');
+    if (toSignIn) toSignIn.onclick = (e) => { e.preventDefault(); toggleAuthMode(); };
+  } else {
+    el.authTitle.textContent = 'Welcome Back';
+    el.authDesc.textContent = 'Sign in to save your Pro status and analysis history.';
+    el.signInBtn.textContent = 'Sign In';
+    el.authSwitch.innerHTML = "Don't have an account? <a href=\"#\" id=\"toSignUp\">Sign up</a>";
+    
+    // Bind the NEWLY created toSignUp link and update el reference
+    el.toSignUp = document.getElementById('toSignUp');
+    if (el.toSignUp) el.toSignUp.onclick = (e) => { e.preventDefault(); toggleAuthMode(); };
+  }
+}
+
 async function handleAuthSubmit(e) {
   e.preventDefault();
+  console.log('Auth submit triggered! Mode:', state.authMode);
+  
   const email = document.getElementById('authEmail').value;
   const pass = document.getElementById('authPass').value;
-  const btn = document.getElementById('signInBtn');
-  
-  if (typeof firebase === 'undefined') return alert('Institutional Network Offline.');
-  
+  const btn = el.signInBtn;
+
+  if (typeof firebase === 'undefined') {
+    console.error('CRITICAL: Firebase SDK missing.');
+    return alert('Institutional Network Offline (Firebase SDK Missing).');
+  }
+
+  console.log('Authenticating:', email, state.authMode);
   btn.disabled = true;
-  btn.textContent = 'AUTHENTICATING...';
+  btn.textContent = state.authMode === 'login' ? 'AUTHENTICATING...' : 'CREATING ACCOUNT...';
 
   try {
-    // Attempt sign in, fallback to sign up
-    try {
+    if (state.authMode === 'login') {
       await firebase.auth().signInWithEmailAndPassword(email, pass);
-    } catch (err) {
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-        await firebase.auth().createUserWithEmailAndPassword(email, pass);
-      } else {
-        throw err;
-      }
+    } else {
+      await firebase.auth().createUserWithEmailAndPassword(email, pass);
     }
     
+    console.log('Auth success!');
     el.authModal.classList.add('hidden');
-    // Session state will be handled by setupAuthListener
   } catch (err) {
-    alert(`Authentication Error: ${err.message}`);
+    console.error('Auth Error Detailed:', err);
+    alert(`Authentication Error: [${err.code}] ${err.message}`);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Sign In';
+    btn.textContent = state.authMode === 'login' ? 'Sign In' : 'Create Account';
   }
 }
 
@@ -346,14 +411,27 @@ function handleUpgradeBtn() {
 // V5: Google Auth
 async function handleGoogleLogin() {
   if (typeof firebase === 'undefined') return;
+  console.log('Initiating Google Login...');
   const provider = new firebase.auth.GoogleAuthProvider();
+  
   try {
     const result = await firebase.auth().signInWithPopup(provider);
     console.log('Google login valid:', result.user.email);
     el.authModal.classList.add('hidden');
+    updateAuthUI();
   } catch (err) {
-    console.error('Google Auth Failed:', err);
-    alert('Institutional connection denied.');
+    console.error('Google Auth Failed Detail:', err);
+    
+    if (err.code === 'auth/unauthorized-domain') {
+      const currentDomain = window.location.hostname;
+      alert(`⚠️ DOMAIN NOT AUTHORIZED\n\nYour domain (${currentDomain}) is not whitelisted in the Firebase Console.\n\nFIX STEPS:\n1. Go to Firebase Console\n2. Authentication -> Settings -> Authorized domains\n3. Add "${currentDomain}" to the list.\n4. Wait 1 minute and try again.`);
+    } else if (err.code === 'auth/popup-closed-by-user') {
+      console.log('User closed auth popup.');
+    } else if (err.code === 'auth/cancelled-popup-request') {
+      console.log('Multiple popups requested.');
+    } else {
+      alert(`Institutional connection denied: ${err.message}`);
+    }
   }
 }
 
@@ -382,7 +460,7 @@ async function logout() {
 // ─── FILE HANDLING ───
 function handleFile(file) {
   if (!file || !file.type.startsWith('image/')) return;
-  
+
   state.selectedFile = file;
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -409,7 +487,7 @@ function updateCreditsUI() {
   }
 
   el.creditsCount.textContent = state.creditsRemaining;
-  
+
   if (state.creditsRemaining <= 0) {
     el.creditsCount.classList.add('out');
     el.paywallOverlay.classList.remove('hidden');
@@ -483,29 +561,29 @@ async function startAnalysis() {
     }
     return;
   }
-  
+
   const ticker = el.tickerInput.value.trim() || 'Unspecified Asset';
   const tf = el.timeframeSelect.value || 'Unspecified Timeframe';
-  
+
   setLoading(true);
-  
+
   try {
     const base64Image = await fileToBase64(state.selectedFile);
     const result = await callGemini(base64Image, ticker, tf);
-    
+
     // Play AI Terminal Animation
     await playTerminalSequence();
-    
+
     renderResults(result, ticker, tf);
     el.resultsContent.scrollIntoView({ behavior: 'smooth' });
-    
+
     if (result.creditsRemaining !== undefined) {
       state.creditsRemaining = result.creditsRemaining;
       updateCreditsUI();
     }
-    
+
     el.resultsPanel.scrollIntoView({ behavior: 'smooth' });
-    
+
   } catch (err) {
     console.error('Analysis failed:', err);
     showError(err.message);
@@ -516,7 +594,7 @@ async function startAnalysis() {
 
 function showError(msg) {
   console.error('UI Error Display:', msg);
-  
+
   let userMsg = msg;
   if (msg.includes('503') || msg.includes('high demand') || msg.includes('UNAVAILABLE')) {
     userMsg = "The AI Network is currently experiencing heavy institutional volume. Please wait 10-20 seconds and try again.";
@@ -534,7 +612,7 @@ function setLoading(val) {
 
 async function callGemini(base64Data, ticker, timeframe) {
   const imageData = base64Data.split(',')[1];
-  
+
   const PROMPT = `Analyze this trading chart for ${ticker} (${timeframe}). 
     ACT AS A SENIOR INSTITUTIONAL ANALYST.
     
@@ -556,7 +634,10 @@ async function callGemini(base64Data, ticker, timeframe) {
 
   const response = await fetch(CONFIG.BACKEND_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(state.user ? { 'Authorization': `Bearer ${await state.user.getIdToken()}` } : {})
+    },
     body: JSON.stringify({
       model: "gemini-2.0-flash",
       contents: [{
@@ -574,7 +655,7 @@ async function callGemini(base64Data, ticker, timeframe) {
     const errData = await response.json().catch(() => ({}));
     const msg = errData.error?.message || 'Server 404/Connection Failed';
     const status = response.status;
-    
+
     if (errData.error?.isLeaked) {
       const modalMsg = '🚨 SECURITY ALERT: Your Gemini API Key has been reported as LEAKED or DISABLED by Google. Please generate a NEW key at [aistudio.google.com] and update your .env file.';
       alert(modalMsg);
@@ -583,12 +664,12 @@ async function callGemini(base64Data, ticker, timeframe) {
 
     if (status === 403) throw new Error('Out of free credits or model restricted. Update to PRO.');
     if (status === 500 && msg.includes('API Key')) throw new Error('Backend error: Gemini API Key is missing. Check .env');
-    
+
     throw new Error(`${msg} (Status: ${status})`);
   }
 
   const data = await response.json();
-  
+
   if (!data.candidates || data.candidates.length === 0) {
     console.error('Gemini API Empty Response:', data);
     const reason = data.promptFeedback?.blockReason || 'No candidates returned (Safety or Model error)';
@@ -597,10 +678,10 @@ async function callGemini(base64Data, ticker, timeframe) {
 
   const rawText = data.candidates[0].content.parts[0].text;
   console.log('Raw AI Response:', rawText);
-  
+
   const cleanJson = extractJson(rawText);
   let parsed = JSON.parse(cleanJson);
-  
+
   // Normalize Keys (Handle camelCase or snake_case variations from the AI)
   parsed = normalizeAiResponse(parsed);
 
@@ -612,7 +693,7 @@ async function callGemini(base64Data, ticker, timeframe) {
  */
 function normalizeAiResponse(data) {
   const norm = { ...data };
-  
+
   // Normalizing Verdict
   if (!norm.verdict) norm.verdict = norm.Verdict || norm.signal || 'HOLD';
   norm.verdict = String(norm.verdict).toUpperCase().split(' ')[0].replace(/[^A-Z]/g, '');
@@ -638,7 +719,7 @@ function normalizeAiResponse(data) {
   // Normalizing Setup (V5 Deep)
   const rawLevels = data.price_levels || data.priceLevels || data.levels || {};
   const rawTps = Array.isArray(rawLevels.tp_targets) ? rawLevels.tp_targets : (Array.isArray(rawLevels.targets) ? rawLevels.targets : []);
-  
+
   norm.price_levels = {
     entry: rawLevels.entry || rawLevels.Entry || 'Market Context',
     stop_loss: rawLevels.stop_loss || rawLevels.stopLoss || 'Structural Protected',
@@ -650,7 +731,7 @@ function normalizeAiResponse(data) {
   // Normalizing Text
   norm.reasoning = data.reasoning || data.Reasoning || 'Analysis technical confirmation is pending.';
   norm.risk_note = data.risk_note || data.riskNote || 'Standard risk management applies.';
-  
+
   return norm;
 }
 
@@ -671,19 +752,19 @@ function extractJson(text) {
 function renderResults(data, ticker, tf) {
   el.resultsPlaceholder.classList.add('hidden');
   el.resultsContent.classList.remove('hidden');
-  
+
   el.verdictBadge.textContent = data.verdict;
   el.verdictBadge.className = `verdict-badge ${data.verdict.toLowerCase()}`;
   el.verdictTicker.textContent = ticker;
   el.verdictTf.textContent = tf;
-  
+
   el.confidencePct.textContent = `${data.confidence_score}%`;
   const offset = 163.4 - (163.4 * (data.confidence_score / 100));
   el.ringFill.style.strokeDashoffset = offset;
-  
+
   if (!el.pillsRow) el.pillsRow = document.getElementById('pillsRow');
   if (!el.levelsGrid) el.levelsGrid = document.getElementById('levelsGrid');
-  
+
   if (data.verdict === 'BUY') el.ringFill.style.stroke = 'var(--green)';
   else if (data.verdict === 'SELL') el.ringFill.style.stroke = 'var(--red)';
   else el.ringFill.style.stroke = 'var(--yellow)';
@@ -714,7 +795,7 @@ function renderResults(data, ticker, tf) {
     el.metricRsi.textContent = data.indicators.rsi;
     el.metricVol.textContent = data.indicators.volatility;
     el.metricSmc.textContent = data.indicators.smc_status;
-    
+
     if (data.indicators.trend.toLowerCase().includes('bull')) el.metricTrend.className = 'metric-value bull';
     else if (data.indicators.trend.toLowerCase().includes('bear')) el.metricTrend.className = 'metric-value bear';
   } catch (e) { console.warn('Metrics fail:', e); }
@@ -747,11 +828,11 @@ async function initScreener() {
 
 async function updateScreener() {
   if (!el.screenerBody) return;
-  
+
   try {
     const res = await fetch(CONFIG.SCREENER_URL);
     const data = await res.json();
-    
+
     el.screenerBody.innerHTML = data.map(coin => {
       const price = parseFloat(coin.lastPrice);
       const prevPrice = lastScreenerData[coin.symbol] || price;
@@ -763,7 +844,7 @@ async function updateScreener() {
       const changeClass = change >= 0 ? 'price-up' : 'price-down';
       const indicator = change >= 2 ? 'BUY' : change <= -2 ? 'SELL' : 'NEUTRAL';
       const signalClass = indicator.toLowerCase();
-      
+
       return `
         <tr class="${flashClass}">
           <td>
@@ -779,10 +860,10 @@ async function updateScreener() {
         </tr>
       `;
     }).join('');
-    
+
     // Cleanup flash classes after animation
     setTimeout(() => {
-       document.querySelectorAll('.price-flash-up, .price-flash-down').forEach(el => el.classList.remove('price-flash-up', 'price-flash-down'));
+      document.querySelectorAll('.price-flash-up, .price-flash-down').forEach(el => el.classList.remove('price-flash-up', 'price-flash-down'));
     }, 1200);
 
   } catch (err) {
@@ -793,11 +874,11 @@ async function updateScreener() {
 async function sendChat() {
   const msg = el.chatInput.value.trim();
   if (!msg || state.isAnalyzing) return;
-  
+
   // Append User message
   appendMessage('user', msg);
   el.chatInput.value = '';
-  
+
   // Loading bubble
   const loadingId = 'ai-loading-' + Date.now();
   el.chatMessages.innerHTML += `<div class="chat-bubble ai" id="${loadingId}">Thinking...</div>`;
@@ -807,7 +888,7 @@ async function sendChat() {
     const ticker = el.verdictTicker.textContent || 'Unknown Ticker';
     const tf = el.verdictTf.textContent || 'Unknown TF';
     const context = el.reasoningBox.textContent;
-    
+
     const PROMPT = `You are TradeGPT, a senior institutional analyst from ChartSense AI. 
     CURRENT CONTEXT: User analysis for ${ticker} on ${tf}. 
     TECHNICAL SUMMARY: ${context}.
@@ -823,7 +904,7 @@ async function sendChat() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: "gemini-2.0-flash", 
+        model: "gemini-2.0-flash",
         contents: [{ parts: [{ text: PROMPT }] }],
         generationConfig: { temperature: 0.5 }
       })
@@ -831,10 +912,10 @@ async function sendChat() {
 
     const data = await response.json();
     const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Institutional core connection lost.";
-    
+
     document.getElementById(loadingId).remove();
     await typeMessage(aiResponse);
-    
+
   } catch (err) {
     document.getElementById(loadingId).textContent = "Institutional Network Latency Detected.";
   }
@@ -844,7 +925,7 @@ async function typeMessage(text) {
   const bubble = document.createElement('div');
   bubble.className = `chat-bubble ai`;
   el.chatMessages.appendChild(bubble);
-  
+
   const words = text.split(' ');
   for (let i = 0; i < words.length; i++) {
     bubble.textContent += (i === 0 ? '' : ' ') + words[i];
@@ -864,7 +945,7 @@ function appendMessage(role, text) {
 function calculateRR(levels) {
   const rrRingFill = document.getElementById('rrRingFill');
   if (!el.rrRatio) return;
-  
+
   const entry = parseFloat(levels.entry.replace(/[^0-9.]/g, ''));
   const sl = parseFloat(levels.stop_loss.replace(/[^0-9.]/g, ''));
   const tp3 = levels.tp_targets && levels.tp_targets[2] ? parseFloat(levels.tp_targets[2].replace(/[^0-9.]/g, '')) : null;
@@ -878,9 +959,9 @@ function calculateRR(levels) {
   const risk = Math.abs(entry - sl);
   const reward = Math.abs(tp3 - entry);
   const ratio = (reward / risk).toFixed(2);
-  
+
   el.rrRatio.textContent = `1:${ratio}`;
-  
+
   // Fill RR ring (scale 1:0 to 1:5+)
   if (rrRingFill) {
     const score = Math.min(100, (parseFloat(ratio) / 5) * 100);
@@ -899,10 +980,98 @@ function showComingSoon(feature) {
   }
 }
 
+// ─── V5 HISTORY MODULE ───
+async function fetchHistory() {
+  if (!state.user || !el.historyList) return;
+
+  el.historyList.innerHTML = '<div class="empty-history">Syncing with encrypted history core...</div>';
+
+  try {
+    const token = await state.user.getIdToken();
+    const res = await fetch(CONFIG.HISTORY_URL, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!res.ok) throw new Error('Fetch failed');
+    const data = await res.json();
+
+    renderHistory(data);
+  } catch (err) {
+    el.historyList.innerHTML = '<div class="empty-history">Failed to load institutional records.</div>';
+  }
+}
+
+function renderHistory(data) {
+  if (!data || data.length === 0) {
+    el.historyList.innerHTML = '<div class="empty-history">No institutional records found for this account.</div>';
+    return;
+  }
+
+  el.historyList.innerHTML = data.map(item => {
+    let result = {};
+    try {
+      result = JSON.parse(item.result);
+      result = normalizeAiResponse(result);
+    } catch (e) { return ''; }
+
+    const date = new Date(item.timestamp).toLocaleDateString(undefined, {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    const verdictClass = result.verdict.toLowerCase();
+
+    return `
+      <div class="history-item" onclick='loadHistoricalAnalysis(${JSON.stringify(result).replace(/'/g, "&apos;")})'>
+        <div class="item-header">
+          <span class="item-ticker">${result.verdict === 'BUY' ? '▲' : '▼'} ANALYSIS</span>
+          <span class="item-date">${date}</span>
+        </div>
+        <div class="item-ticker" style="font-size: 14px; opacity: 0.9;">PROPRIETARY SIGNAL</div>
+        <div class="item-header">
+          <span class="item-verdict ${verdictClass}">${result.verdict}</span>
+          <span style="font-size: 11px; opacity: 0.5;">${result.confidence_score}% CONF</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function loadHistoricalAnalysis(data) {
+  // Simple "Load" effect
+  el.historyPanel.classList.add('hidden');
+  renderResults(data, "HISTORICAL", "RECORD");
+  el.resultsPanel.scrollIntoView({ behavior: 'smooth' });
+}
+
+function copySetupToClipboard() {
+  const entry = el.setupEntry.textContent;
+  const sl = el.setupSl.textContent;
+  const tp1 = el.tp1.textContent;
+  const tp2 = el.tp2.textContent;
+  const tp3 = el.tp3.textContent;
+  const ticker = el.verdictTicker.textContent;
+
+  const text = `📈 CHARTSENSE AI — ELITE SETUP [${ticker}]\n\n` +
+    `🔹 ENTRY: ${entry}\n` +
+    `🛑 STOP LOSS: ${sl}\n` +
+    `🎯 TP 1: ${tp1}\n` +
+    `🎯 TP 2: ${tp2}\n` +
+    `🎯 TP 3: ${tp3}\n\n` +
+    `Institutional Alpha Generated via Gemini 3 Flash.`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    el.copySetupBtn.classList.add('copied');
+    el.copySetupBtn.innerHTML = '<i class="fas fa-check"></i>';
+    setTimeout(() => {
+      el.copySetupBtn.classList.remove('copied');
+      el.copySetupBtn.innerHTML = '<i class="fas fa-copy"></i>';
+    }, 2000);
+  });
+}
+
 async function playTerminalSequence() {
   el.terminalOverlay.classList.remove('hidden');
   el.terminalBody.innerHTML = '';
-  
+
   const lines = [
     `> INITIALIZING INSTITUTIONAL AI CORE...`,
     `> CONNECTING TO CHATSENSE DEEP-LIQUIDITY API...`,
@@ -912,7 +1081,7 @@ async function playTerminalSequence() {
     `> CALCULATING INSTITUTIONAL WIN PROBABILITY...`,
     `> GENERATING VERIFIED REPORT...`
   ];
-  
+
   for (const line of lines) {
     const div = document.createElement('div');
     div.className = 'term-line';
@@ -920,7 +1089,7 @@ async function playTerminalSequence() {
     el.terminalBody.appendChild(div);
     await new Promise(r => setTimeout(r, 400));
   }
-  
+
   await new Promise(r => setTimeout(r, 600));
   el.terminalOverlay.classList.add('hidden');
 }

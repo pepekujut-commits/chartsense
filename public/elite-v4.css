@@ -1603,3 +1603,122 @@ body {
 }
 
 .status-msg:hover { color: var(--green); }
+
+/* ─── HISTORY PANEL (V5 ELITE) ─── */
+.history-panel {
+  padding: 24px;
+  animation: slideUp 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+  margin-top: 40px;
+}
+
+.panel-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.history-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 8px;
+  padding-bottom: 8px;
+}
+
+.history-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--purple);
+  transform: translateY(-2px);
+}
+
+.history-item .item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.history-item .item-date {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.history-item .item-verdict {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.history-item .item-verdict.buy { background: rgba(16, 185, 129, 0.1); color: var(--green); }
+.history-item .item-verdict.sell { background: rgba(239, 68, 68, 0.1); color: var(--red); }
+.history-item .item-verdict.hold { background: rgba(245, 158, 11, 0.1); color: var(--yellow); }
+
+.history-item .item-ticker {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.empty-history {
+  grid-column: 1 / -1;
+  padding: 60px;
+  text-align: center;
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 13px;
+}
+
+/* ─── TICKET ACTIONS ─── */
+.ticket-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-copy-setup {
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  color: var(--purple);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.btn-copy-setup:hover {
+  background: var(--purple);
+  color: white;
+  transform: scale(1.1);
+}
+
+.btn-copy-setup.copied {
+  background: var(--green);
+  color: white;
+  border-color: var(--green);
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
