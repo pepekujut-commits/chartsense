@@ -261,8 +261,13 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
     const userId = session.client_reference_id;
     
     if (userId && db) {
-      await db.collection('users').doc(userId).set({ isPro: true }, { merge: true });
-      console.log(`User ${userId} upgraded to ELITE PRO.`);
+      await db.collection('users').doc(userId).set({ 
+        isPro: true,
+        stripeCustomer: session.customer,
+        planType: 'pro',
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      console.log(`User ${userId} upgraded to ELITE PRO. Customer: ${session.customer}`);
     }
   }
 

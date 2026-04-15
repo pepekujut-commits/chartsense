@@ -160,6 +160,7 @@ const el = {
   settingsModal: document.getElementById('settingsModal'),
   manageSubBtn: document.getElementById('manageSubBtn'),
   billingToggle: document.getElementById('billingToggle'),
+  headerCta: document.getElementById('headerCta'),
   
   // Settings detail elements
   settingsEmail: document.getElementById('settingsEmail'),
@@ -516,14 +517,26 @@ function updateAuthUI() {
     el.userAvatar.textContent = state.user.email.charAt(0).toUpperCase();
     
     // Auto-sync status from Firestore on login
+    console.log('--- STARTING PRO STATUS SYNC (Firestore) ---');
     const db = firebase.firestore();
     db.collection('users').doc(state.user.uid).onSnapshot(doc => {
+      console.log('Firestore update detected for user:', state.user.uid);
       if (doc.exists) {
         const data = doc.data();
+        console.log('Current Firestore Data:', data);
         state.isPro = data.isPro || false;
         state.creditsRemaining = data.creditsRemaining !== undefined ? data.creditsRemaining : state.creditsRemaining;
+        
+        if (state.isPro) {
+          console.log('%c UPGRADE DETECTED: User is now ELITE PRO. ', 'background: #00ff00; color: #000; font-weight: bold;');
+        }
+        
         updateCreditsUI();
+      } else {
+        console.warn('No Firestore document found for user yet.');
       }
+    }, err => {
+      console.error('Firestore Sync Error:', err);
     });
   } else {
     el.openAuth.classList.remove('hidden');
@@ -563,9 +576,19 @@ function updateCreditsUI() {
 
   if (state.isPro) {
     el.creditsCount.textContent = '∞';
-    el.creditsCount.classList.remove('out');
     el.creditsCount.style.color = 'var(--purple)';
     
+    // Transform Header Button
+    if (el.headerCta) {
+      el.headerCta.innerHTML = '<i class="fas fa-cog"></i> Account Settings';
+      el.headerCta.classList.add('pro-active');
+      el.headerCta.onclick = (e) => {
+        e.preventDefault();
+        syncSettingsUI();
+        el.settingsModal.classList.remove('hidden');
+      };
+    }
+
     if (el.upgradeBtn) {
       el.upgradeBtn.innerHTML = '✨ Pro Active';
       el.upgradeBtn.classList.add('pro-active');
@@ -580,6 +603,13 @@ function updateCreditsUI() {
 
     el.paywallOverlay.classList.add('hidden');
     return;
+  }
+
+  // Restore Header Button if not Pro
+  if (el.headerCta) {
+    el.headerCta.textContent = 'Get Access';
+    el.headerCta.classList.remove('pro-active');
+    el.headerCta.onclick = handleUpgradeBtn;
   }
 
   el.creditsCount.textContent = state.creditsRemaining;
