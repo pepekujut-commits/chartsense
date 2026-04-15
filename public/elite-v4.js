@@ -167,7 +167,8 @@ const el = {
   settingsEmail: document.getElementById('settingsEmail'),
   settingsPlanBadge: document.getElementById('settingsPlanBadge'),
   settingsCredits: document.getElementById('settingsCredits'),
-  settingsUID: document.getElementById('settingsUID')
+  settingsUID: document.getElementById('settingsUID'),
+  refreshStatusBtn: document.getElementById('refreshStatusBtn')
 };
 
 // ─── INIT ───
@@ -362,6 +363,8 @@ function setupEventListeners() {
     });
   }
 
+  if (el.refreshStatusBtn) el.refreshStatusBtn.onclick = handleRefreshStatus;
+  
   // Chat Handlers
   el.chatSendBtn.onclick = sendChat;
   el.chatInput.onkeypress = (e) => { if (e.key === 'Enter') sendChat(); };
@@ -634,6 +637,38 @@ function updateCreditsUI() {
   } else {
     el.creditsCount.classList.remove('out');
     el.paywallOverlay.classList.add('hidden');
+  }
+}
+
+async function handleRefreshStatus() {
+  if (!state.user) return;
+  const btn = el.refreshStatusBtn;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
+
+  try {
+    const db = firebase.firestore();
+    const doc = await db.collection('users').doc(state.user.uid).get();
+    
+    if (doc.exists) {
+      const data = doc.data();
+      state.isPro = data.isPro || false;
+      state.creditsRemaining = data.creditsRemaining !== undefined ? data.creditsRemaining : state.creditsRemaining;
+      
+      updateCreditsUI();
+      syncSettingsUI();
+
+      if (state.isPro) {
+        alert('✨ SUCCESS: Elite Pro status verified. Your institutional access is active.');
+      } else {
+        alert('Status verified: No active subscription found in your institutional record yet. If you recently paid, please wait 60 seconds and refresh.');
+      }
+    }
+  } catch (err) {
+    alert('Failed to refresh status: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Subscription Status';
   }
 }
 

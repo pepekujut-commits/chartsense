@@ -50,32 +50,50 @@ app.post('/api/webhook', express.raw({type: 'application/json'}), async (req, re
   let event;
 
   try {
+    const rawBody = req.body instanceof Buffer ? req.body : Buffer.from(req.body);
+
     if (stripe && webhookSecret && sig) {
-      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
     } else {
-      // Manual event simulation for testing if secret is missing
-      console.warn('STRIPE_WEBHOOK_SECRET or Signature missing. Using raw body (UNSAFE).');
-      event = JSON.parse(req.body);
+      console.warn('STRIPE_WEBHOOK_SECRET missing. Using fallback parsing (UNSAFE).');
+      event = JSON.parse(rawBody.toString());
     }
   } catch (err) {
-    console.error(`Webhook Error: ${err.message}`);
+    console.error(`Webhook Verification Failed: ${err.message}`);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   // Handle the event
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    const userId = session.client_reference_id;
+    let userId = session.client_reference_id;
+    const customerEmail = session.customer_details?.email;
     
-    if (userId && db) {
+    console.log(`[STRIPE] Processing Success for: ${customerEmail} (ID: ${userId})`);
+
+    if (db) {
       try {
-        await db.collection('users').doc(userId).set({ 
-          isPro: true,
-          stripeCustomer: session.customer,
-          subscriptionId: session.subscription,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-        console.log(`[STRIPE] User ${userId} upgraded to ELITE PRO via Webhook.`);
+        // Fallback: If userId missing, find by email
+        if (!userId && customerEmail) {
+          console.log(`Searching for user by email: ${customerEmail}`);
+          const userQuery = await db.collection('users').where('email', '==', customerEmail).limit(1).get();
+          if (!userQuery.empty) {
+            userId = userQuery.docs[0].id;
+          }
+        }
+
+        if (userId) {
+          await db.collection('users').doc(userId).set({ 
+            isPro: true,
+            stripeCustomer: session.customer,
+            subscriptionId: session.subscription,
+            planType: 'pro',
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+          console.log(`[STRIPE] SUCCESS: User ${userId} upgraded to ELITE PRO.`);
+        } else {
+          console.warn('[STRIPE] FAILURE: Could not identify user for fulfillment.');
+        }
       } catch (e) {
         console.error('Webhook DB Update Failed:', e.message);
       }
