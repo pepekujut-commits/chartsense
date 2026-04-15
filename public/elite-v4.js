@@ -162,10 +162,18 @@ const el = {
 
 // ─── INIT ───
 async function init() {
-  hydrateElements();
-  setupEventListeners(); // Move to top so UI is interactive immediately
+  console.log('--- INITIALIZING ELITE CORE ---');
+  hydrateElements(); 
+  
+  if (!el.completeCheckout) {
+    console.error('CRITICAL: completeCheckout button not found in DOM.');
+  } else {
+    console.log('SUCCESS: completeCheckout button bound.');
+  }
+
+  setupEventListeners(); 
   checkUrlParams();
-  checkHealth(); // Don't await, let it run in background
+  checkHealth(); 
   setupAuthListener();
   startLiveStats();
   initScreener();
