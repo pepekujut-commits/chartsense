@@ -1,5 +1,4 @@
 console.log('--- CHARTSENSE BOOTING ---');
-alert('INSTITUTIONAL SYNC STARTED (v2026.04.14-FINAL)');
 const CONFIG = {
   DEFAULT_MODEL: 'gemini-3-flash-preview',
   BACKEND_URL: '/api/analyze',
@@ -23,7 +22,9 @@ const firebaseConfig = {
 
 // Initialize Firebase if not already
 if (typeof firebase !== 'undefined') {
-  firebase.initializeApp(firebaseConfig);
+  if (!firebase.apps || firebase.apps.length === 0) {
+    firebase.initializeApp(firebaseConfig);
+  }
 }
 
 // ─── STATE ───
@@ -203,22 +204,7 @@ function checkUrlParams() {
   }
 }
 
-function setupAuthListener() {
-  if (typeof firebase === 'undefined') return;
-
-  firebase.auth().onAuthStateChanged(async (user) => {
-    state.user = user;
-    if (user) {
-      console.log('Institutional session active:', user.email);
-      await syncStatus(); // Sync Pro/Credits from Firestore
-    } else {
-      console.log('Awaiting institutional login...');
-      state.isPro = false;
-      state.creditsRemaining = 3;
-      updateAuthUI();
-    }
-  });
-}
+// setupAuthListener moved to unified definition below
 
 function hydrateElements() {
   for (const key in el) {
@@ -392,9 +378,19 @@ function setupEventListeners() {
 function setupAuthListener() {
   if (typeof firebase === 'undefined') return;
   
-  firebase.auth().onAuthStateChanged((user) => {
+  firebase.auth().onAuthStateChanged(async (user) => {
     console.log('Auth state change detected:', user ? user.email : 'LOGGED_OUT');
     state.user = user;
+    
+    if (user) {
+      console.log('Institutional session active:', user.email);
+      await syncStatus(); // Sync Pro/Credits from Firestore
+    } else {
+      console.log('Awaiting institutional login...');
+      state.isPro = false;
+      state.creditsRemaining = 3;
+    }
+
     updateAuthUI();
     
     if (user && state.pendingAction === 'checkout') {
@@ -621,17 +617,6 @@ function updateCreditsUI() {
     el.creditsCount.textContent = '∞';
     el.creditsCount.style.color = 'var(--purple)';
     
-    // Transform Header Button
-    if (el.headerCta) {
-      el.headerCta.innerHTML = '<i class="fas fa-cog"></i> Account Settings';
-      el.headerCta.classList.add('pro-active');
-      el.headerCta.onclick = (e) => {
-        e.preventDefault();
-        syncSettingsUI();
-        el.settingsModal.classList.remove('hidden');
-      };
-    }
-
     // Update Header Buttons
     if (el.headerUpgradeBtn) el.headerUpgradeBtn.classList.add('hidden');
     if (el.headerSettingsBtn) el.headerSettingsBtn.classList.remove('hidden');
@@ -779,32 +764,7 @@ async function handleManageSubscription() {
   }
 }
 
-function syncSettingsUI() {
-  const user = firebase.auth().currentUser;
-  if (!user) return;
-
-  const emailDisplay = document.getElementById('settingsEmail');
-  const uidDisplay = document.getElementById('settingsUID');
-  const badge = document.getElementById('settingsPlanBadge');
-  const credits = document.getElementById('settingsCredits');
-
-  if (emailDisplay) emailDisplay.textContent = user.email;
-  if (uidDisplay) uidDisplay.textContent = user.uid.substring(0, 8) + '...';
-
-  if (state.isPro) {
-    if (badge) {
-      badge.textContent = 'ELITE PRO';
-      badge.className = 'status-badge pro';
-    }
-    if (credits) credits.textContent = 'Unlimited access enabled';
-  } else {
-    if (badge) {
-      badge.textContent = 'STARTER (Free)';
-      badge.className = 'status-badge';
-    }
-    if (credits) credits.textContent = `${state.creditsRemaining} analyses remaining`;
-  }
-}
+// syncSettingsUI unified above
 
 function exportToPdf() {
   if (!state.isPro) {

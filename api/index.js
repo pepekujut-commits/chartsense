@@ -1,3 +1,4 @@
+require('dotenv').config({ path: '.env.local' });
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -6,6 +7,9 @@ const path = require('path');
 const fs = require('fs');
 const Stripe = require('stripe');
 const admin = require('firebase-admin');
+
+const app = express();
+const PORT = process.env.PORT || 3005; // Switching from 3001 to bypass zombie processes and caching
 
 // ─── INITIALIZE SAAS SERVICES ───
 let stripe;
@@ -23,12 +27,17 @@ try {
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    // PEM private keys must have real newlines
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
     console.log('Firebase Admin initialized successfully.');
   } catch (e) {
     console.warn('Firebase Admin init failed. Check FIREBASE_SERVICE_ACCOUNT format.');
+    console.warn('Detailed Error:', e.message);
   }
 } else {
   console.warn('FIREBASE_SERVICE_ACCOUNT missing. Auth verification and DB features will be limited.');
@@ -36,8 +45,19 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
 
 const db = admin.apps.length ? admin.firestore() : null;
 
-const app = express();
-const PORT = process.env.PORT || 3005; // Switching from 3001 to bypass zombie processes and caching
+// PORT and app already initialized at the top
+
+app.get('/api/debug-sync', async (req, res) => {
+  res.json({
+    stripeInitialized: !!stripe,
+    firebaseInitialized: !!db,
+    hasWebhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET,
+    hasStripeKey: !!process.env.STRIPE_SECRET_KEY,
+    hasFirebaseKey: !!process.env.FIREBASE_SERVICE_ACCOUNT,
+    adminApps: admin.apps.length,
+    timestamp: new Date().toISOString()
+  });
+});
 
 // ─── MIDDLEWARE ───
 app.use(cors());
@@ -92,8 +112,6 @@ app.post('/api/webhook', express.raw({type: 'application/json'}), async (req, re
             console.warn(`User document not found for ${customerEmail}. Creating pre-fulfillment record.`);
             await db.collection('pro_backlog').doc(emailLower).set({
               email: emailLower,
-              stripeCustomer: session.customer,
-              subscriptionId: session.subscription,
               isPro: true,
               timestamp: new Date().toISOString()
             });
@@ -282,33 +300,7 @@ app.get('/api/history', async (req, res) => {
   }
 });
 
-app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const userId = session.client_reference_id;
-    
-    if (userId && db) {
-      await db.collection('users').doc(userId).set({ 
-        isPro: true,
-        stripeCustomer: session.customer,
-        planType: 'pro',
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-      console.log(`User ${userId} upgraded to ELITE PRO. Customer: ${session.customer}`);
-    }
-  }
-
-  res.json({ received: true });
-});
+// Webhook is handled above to ensure raw body access
 
 app.get(['/api/screener', '/screener'], async (req, res) => {
   try {
