@@ -397,9 +397,23 @@ function setupAuthListener() {
     state.user = user;
     
     if (user) {
+      // Always refresh server-side claims first
       await user.reload().catch(() => {});
       state.user = firebase.auth().currentUser;
-      console.log('Institutional session active:', user.email);
+
+      // HARD MODE: block all unverified users from staying logged in
+      if (!isUserVerified(state.user)) {
+        try {
+          await sendVerificationEmail(state.user);
+        } catch (e) {
+          console.warn('Verification email send failed on auth state:', e?.message);
+        }
+        alert('For security, you must verify your email before using ChartSense.\n\nWe just sent a verification link to your inbox. Click it, then sign in again.');
+        await firebase.auth().signOut();
+        return;
+      }
+
+      console.log('Institutional session active (verified):', state.user.email);
       await syncStatus(); // Sync Pro/Credits from Firestore
     } else {
       console.log('Awaiting institutional login...');
