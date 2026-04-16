@@ -306,9 +306,11 @@ function setupEventListeners() {
   
   if (el.openSettings) el.openSettings.onclick = (e) => {
     e.preventDefault();
-    el.userMenu.classList.add('hidden');
+    if (el.userMenu) el.userMenu.classList.add('hidden');
     syncSettingsUI();
-    el.settingsModal.classList.remove('hidden');
+    if (el.settingsModal) {
+      el.settingsModal.classList.remove('hidden');
+    }
   };
   if (el.closeSettings) el.closeSettings.onclick = () => el.settingsModal.classList.add('hidden');
   if (el.manageSubBtn) el.manageSubBtn.onclick = handleManageSubscription;
@@ -371,8 +373,14 @@ function setupEventListeners() {
   if (el.historyBtn) el.historyBtn.onclick = (e) => {
     e.preventDefault();
     if (el.userMenu) el.userMenu.classList.add('hidden');
-    el.historyPanel.classList.remove('hidden');
-    fetchHistory();
+    if (el.historyPanel) {
+      el.historyPanel.classList.remove('hidden');
+      el.historyPanel.scrollIntoView({ behavior: 'smooth' });
+    }
+    // Try to load history, but don't block the UI if it fails
+    fetchHistory().catch((err) => {
+      console.warn('History fetch failed:', err?.message || err);
+    });
   };
   if (el.closeHistory) el.closeHistory.onclick = () => el.historyPanel.classList.add('hidden');
 
