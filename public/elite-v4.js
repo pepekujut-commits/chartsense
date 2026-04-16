@@ -33,6 +33,7 @@ let state = {
   creditsRemaining: 3,
   isPro: false,
   user: null, // User object for Auth
+  authUnsubscribe: null,
   selectedFile: null,
   isAnalyzing: false,
   healthChecked: false,
@@ -169,7 +170,12 @@ const el = {
   settingsPlanBadge: document.getElementById('settingsPlanBadge'),
   settingsCredits: document.getElementById('settingsCredits'),
   settingsUID: document.getElementById('settingsUID'),
-  refreshStatusBtn: document.getElementById('refreshStatusBtn')
+  settingsVerificationBadge: document.getElementById('settingsVerificationBadge'),
+  settingsVerificationText: document.getElementById('settingsVerificationText'),
+  refreshStatusBtn: document.getElementById('refreshStatusBtn'),
+  sendVerificationBtn: document.getElementById('sendVerificationBtn'),
+  resendVerificationBtn: document.getElementById('resendVerificationBtn'),
+  resetPasswordBtn: document.getElementById('resetPasswordBtn')
 };
 
 // ─── INIT ───
@@ -293,7 +299,10 @@ function setupEventListeners() {
   if (el.authForm) el.authForm.onsubmit = handleAuthSubmit;
   if (el.googleBtn) el.googleBtn.onclick = handleGoogleLogin;
   if (el.userAvatar) el.userAvatar.onclick = () => el.userMenu.classList.toggle('hidden');
-  if (el.logoutBtn) el.logoutBtn.onclick = logout;
+  if (el.logoutBtn) el.logoutBtn.onclick = (e) => {
+    e.preventDefault();
+    logout();
+  };
   
   if (el.openSettings) el.openSettings.onclick = (e) => {
     e.preventDefault();
@@ -303,6 +312,9 @@ function setupEventListeners() {
   };
   if (el.closeSettings) el.closeSettings.onclick = () => el.settingsModal.classList.add('hidden');
   if (el.manageSubBtn) el.manageSubBtn.onclick = handleManageSubscription;
+  if (el.sendVerificationBtn) el.sendVerificationBtn.onclick = handleSendVerificationEmail;
+  if (el.resendVerificationBtn) el.resendVerificationBtn.onclick = handleResendVerificationFromMenu;
+  if (el.resetPasswordBtn) el.resetPasswordBtn.onclick = handleResetPassword;
   if (el.toSignUp) {
     el.toSignUp.onclick = (e) => { 
       e.preventDefault(); 
@@ -356,7 +368,9 @@ function setupEventListeners() {
   el.chatInput.onkeypress = (e) => { if (e.key === 'Enter') sendChat(); };
 
   // History Handlers
-  if (el.historyBtn) el.historyBtn.onclick = () => {
+  if (el.historyBtn) el.historyBtn.onclick = (e) => {
+    e.preventDefault();
+    if (el.userMenu) el.userMenu.classList.add('hidden');
     el.historyPanel.classList.remove('hidden');
     fetchHistory();
   };
@@ -383,6 +397,8 @@ function setupAuthListener() {
     state.user = user;
     
     if (user) {
+      await user.reload().catch(() => {});
+      state.user = firebase.auth().currentUser;
       console.log('Institutional session active:', user.email);
       await syncStatus(); // Sync Pro/Credits from Firestore
     } else {
@@ -435,6 +451,19 @@ function syncSettingsUI() {
   
   el.settingsEmail.textContent = state.user.email;
   el.settingsUID.textContent = state.user.uid;
+  const isVerified = isUserVerified(state.user);
+
+  if (isVerified) {
+    el.settingsVerificationBadge.textContent = 'Verified';
+    el.settingsVerificationBadge.classList.add('pro');
+    el.settingsVerificationText.textContent = 'Your email has been verified and your account is fully secured.';
+    el.sendVerificationBtn.classList.add('hidden');
+  } else {
+    el.settingsVerificationBadge.textContent = 'Pending';
+    el.settingsVerificationBadge.classList.remove('pro');
+    el.settingsVerificationText.textContent = 'Verify your email before using account-only features and checkout.';
+    el.sendVerificationBtn.classList.remove('hidden');
+  }
   
   if (state.isPro) {
     el.settingsPlanBadge.textContent = 'ELITE PRO';
@@ -466,16 +495,27 @@ async function handleAuthSubmit(e) {
 
   try {
     if (state.authMode === 'login') {
-      await firebase.auth().signInWithEmailAndPassword(email, pass);
+      const credential = await firebase.auth().signInWithEmailAndPassword(email, pass);
+      await credential.user.reload();
+      if (!isUserVerified(credential.user)) {
+        await firebase.auth().signOut();
+        await sendVerificationEmail(credential.user);
+        throw new Error('Please verify your email before signing in. We sent a fresh verification link to your inbox.');
+      }
     } else {
-      await firebase.auth().createUserWithEmailAndPassword(email, pass);
+      const credential = await firebase.auth().createUserWithEmailAndPassword(email, pass);
+      await sendVerificationEmail(credential.user);
+      await firebase.auth().signOut();
+      alert('Account created. Check your inbox and verify your email before signing in.');
+      toggleAuthMode();
+      return;
     }
     
     console.log('Auth success!');
     el.authModal.classList.add('hidden');
   } catch (err) {
     console.error('Auth Error Detailed:', err);
-    alert(`Authentication Error: [${err.code}] ${err.message}`);
+    alert(`Authentication Error: [${err.code || 'auth/error'}] ${err.message}`);
   } finally {
     btn.disabled = false;
     btn.textContent = state.authMode === 'login' ? 'Sign In' : 'Create Account';
@@ -522,23 +562,34 @@ async function handleGoogleLogin() {
 }
 
 function updateAuthUI() {
+  if (state.authUnsubscribe) {
+    state.authUnsubscribe();
+    state.authUnsubscribe = null;
+  }
+
   if (state.user) {
     el.openAuth.classList.add('hidden');
     el.userProfile.classList.remove('hidden');
     el.userEmailAddress.textContent = state.user.email;
     el.userAvatar.textContent = state.user.email.charAt(0).toUpperCase();
+    if (!isUserVerified(state.user)) {
+      el.resendVerificationBtn.classList.remove('hidden');
+    } else {
+      el.resendVerificationBtn.classList.add('hidden');
+    }
     
     // Ensure email is tracked in Firestore for lookup
     const db = firebase.firestore();
     const userRef = db.collection('users').doc(state.user.uid);
     userRef.set({ 
       email: state.user.email,
+      emailVerified: isUserVerified(state.user),
       lastLogin: new Date().toISOString() 
     }, { merge: true });
 
     // Auto-sync status from Firestore on login
     console.log('--- STARTING PRO STATUS SYNC (Firestore) ---');
-    userRef.onSnapshot(doc => {
+    state.authUnsubscribe = userRef.onSnapshot(doc => {
       console.log('Firestore update detected for user:', state.user.uid);
       if (doc.exists) {
         const data = doc.data();
@@ -569,10 +620,11 @@ function updateAuthUI() {
         }
         
         updateCreditsUI();
+        syncSettingsUI();
       } else {
         console.warn('No Firestore document found for user yet.');
         // If no doc exists, create it with email for future lookups
-        userRef.set({ email: state.user.email, creditsRemaining: 3, isPro: false });
+        userRef.set({ email: state.user.email, emailVerified: isUserVerified(state.user), creditsRemaining: 3, isPro: false });
       }
     }, err => {
       console.error('Firestore Sync Error:', err);
@@ -580,10 +632,16 @@ function updateAuthUI() {
   } else {
     el.openAuth.classList.remove('hidden');
     el.userProfile.classList.add('hidden');
+    el.userMenu.classList.add('hidden');
   }
 }
 
 async function logout() {
+  if (state.authUnsubscribe) {
+    state.authUnsubscribe();
+    state.authUnsubscribe = null;
+  }
+
   if (typeof firebase !== 'undefined') {
     await firebase.auth().signOut();
   }
@@ -690,11 +748,62 @@ function checkAnalyzeStatus() {
   el.analyzeBtn.disabled = !hasImage || !hasCredits || state.isAnalyzing;
 }
 
+function isUserVerified(user) {
+  if (!user) return false;
+  const providerIds = (user.providerData || []).map((provider) => provider.providerId);
+  return Boolean(user.emailVerified || providerIds.includes('google.com'));
+}
+
+async function sendVerificationEmail(user) {
+  if (!user || isUserVerified(user)) return;
+  await user.sendEmailVerification();
+}
+
+async function handleSendVerificationEmail(e) {
+  if (e) e.preventDefault();
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  try {
+    await sendVerificationEmail(user);
+    alert(`Verification email sent to ${user.email}. Open it, verify your account, then sign in again.`);
+  } catch (err) {
+    alert('Could not send verification email: ' + err.message);
+  }
+}
+
+async function handleResendVerificationFromMenu(e) {
+  if (e) e.preventDefault();
+  el.userMenu.classList.add('hidden');
+  await handleSendVerificationEmail();
+}
+
+async function handleResetPassword(e) {
+  if (e) e.preventDefault();
+  const email = state.user?.email || document.getElementById('authEmail').value.trim();
+  if (!email) {
+    alert('Enter your email first so we can send the reset link.');
+    return;
+  }
+
+  try {
+    await firebase.auth().sendPasswordResetEmail(email);
+    alert(`Password reset link sent to ${email}.`);
+  } catch (err) {
+    alert('Password reset failed: ' + err.message);
+  }
+}
+
 // ─── MONETIZATION LOGIC ───
 async function handlePayment() {
   if (!state.user) {
     state.pendingAction = 'checkout';
     el.authModal.classList.remove('hidden');
+    return;
+  }
+
+  if (!isUserVerified(state.user)) {
+    alert('Verify your email before starting checkout. We can resend the verification email from Account Settings.');
     return;
   }
 
@@ -736,6 +845,11 @@ async function handlePayment() {
 async function handleManageSubscription() {
   const user = firebase.auth().currentUser;
   if (!user) return;
+
+  if (!isUserVerified(user)) {
+    alert('Verify your email before opening subscription management.');
+    return;
+  }
 
   const originalText = el.manageSubBtn.textContent;
   el.manageSubBtn.textContent = 'OPENING BILLING PORTAL...';

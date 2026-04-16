@@ -62,6 +62,7 @@
   padding: 12px 0;
 }
 .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 32px; }
+.header-actions { display: flex; align-items: center; gap: 12px; }
 
 .main-nav { display: flex; align-items: center; gap: 24px; }
 .nav-link { 
@@ -1270,13 +1271,13 @@ body {
 
 .user-profile { position: relative; display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .user-avatar {
-  width: 32px; height: 32px; background: linear-gradient(135deg, var(--blue), var(--purple)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #fff; border: 2px solid var(--border);
+  width: 36px; height: 36px; background: linear-gradient(135deg, var(--blue), var(--purple)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #fff; border: 2px solid var(--border); box-shadow: 0 8px 20px rgba(74, 158, 255, 0.18);
 }
 .user-menu {
   position: absolute; top: calc(100% + 12px); right: 0; background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-sm); width: 200px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden;
 }
 .menu-header { padding: 12px 16px; font-size: 12px; color: var(--text-dim); border-bottom: 1px solid var(--border); word-break: break-all; }
-.menu-item { display: block; padding: 10px 16px; font-size: 14px; color: var(--text-muted); text-decoration: none; transition: background var(--transition); }
+.menu-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; font-size: 14px; color: var(--text-muted); text-decoration: none; transition: background var(--transition); }
 .menu-item:hover { background: var(--surface2); color: var(--text); }
 
 /* Analyzer Controls Wrapper & Paywall Overlay */
@@ -1797,6 +1798,22 @@ body {
 }
 
 .settings-footer p { margin: 0; }
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 
 
 /* ¦¦¦ PRO ACTIVE STATES ¦¦¦ */

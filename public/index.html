@@ -49,6 +49,19 @@
           <button class="btn-cta hidden" id="headerSettingsBtn" onclick="openSettingsModal()">
             <i class="fas fa-cog"></i> Account Settings
           </button>
+          <div id="userProfile" class="user-profile hidden">
+            <div class="user-avatar" id="userAvatar">
+              <i class="fas fa-user"></i>
+            </div>
+            <div class="user-menu dropdown hidden" id="userMenu">
+              <div class="menu-header" id="userEmailAddress">user@email.com</div>
+              <a href="#" class="menu-item" id="historyBtn"><i class="fas fa-scroll"></i> Analysis History</a>
+              <a href="#" class="menu-item" id="openSettings"><i class="fas fa-cog"></i> Account Settings</a>
+              <a href="#" class="menu-item hidden" id="resendVerificationBtn"><i class="fas fa-envelope-circle-check"></i> Verify Email</a>
+              <a href="#" class="menu-item" id="logoutBtn"><i class="fas fa-right-from-bracket"></i> Log Out</a>
+            </div>
+          </div>
+          <button class="btn-ghost" id="openAuth">Sign In</button>
         </div>
       </div>
     </div>
@@ -130,21 +143,6 @@
   </div>
 
 
-        <div id="userProfile" class="user-profile hidden">
-          <div class="user-avatar" id="userAvatar">U</div>
-          <div class="user-menu dropdown hidden" id="userMenu">
-              <div class="menu-header" id="userEmailAddress">user@email.com</div>
-              <a href="#" class="menu-item" id="historyBtn">📜 Analysis History</a>
-              <a href="#" class="menu-item" id="openSettings">⚙️ Account Settings</a>
-              <a href="#" class="menu-item" id="logoutBtn">Log Out</a>
-          </div>
-        </div>
-        
-        <button class="btn-ghost" id="openAuth">Sign In</button>
-      </div>
-    </div>
-  </header>
-  
   <!-- ─── SETTINGS MODAL (V5 ELITE) ─── -->
   <div id="settingsModal" class="modal-overlay hidden">
     <div class="modal-box settings-box">
@@ -159,6 +157,15 @@
           <label>Institutional Email</label>
           <div class="settings-value" id="settingsEmail">---</div>
         </div>
+        <div class="settings-group">
+          <label>Email Verification</label>
+          <div class="settings-status-box">
+            <div id="settingsVerificationBadge" class="status-badge">Pending</div>
+            <div class="status-meta">
+              <span id="settingsVerificationText">Please verify your email to secure your account.</span>
+            </div>
+          </div>
+        </div>
         
         <div class="settings-group">
           <label>Plan Status</label>
@@ -172,10 +179,13 @@
         
         <div class="settings-actions">
            <button class="btn-primary btn-full" id="manageSubBtn" style="margin-bottom: 12px;">Manage Subscription</button>
+           <button class="btn-ghost btn-full hidden" id="sendVerificationBtn">
+             <i class="fas fa-envelope-circle-check"></i> Send Verification Email
+           </button>
            <button class="btn-ghost btn-full" id="refreshStatusBtn" style="font-size: 11px;">
              <i class="fas fa-sync-alt"></i> Refresh Subscription Status
            </button>
-           <button class="btn-ghost btn-full" onclick="alert('Password reset link sent to your institutional email.')">
+           <button class="btn-ghost btn-full" id="resetPasswordBtn">
              Reset Password
            </button>
         </div>
