@@ -1,7 +1,7 @@
 console.log('elite-v4.js loaded');
 console.log('--- CHARTSENSE BOOTING ---');
 const CONFIG = {
-  DEFAULT_MODEL: 'gemini-3-flash-preview',
+  DEFAULT_MODEL: 'gemini-2.0-flash',
   BACKEND_URL: '/api/analyze',
   STATUS_URL: '/api/status',
   CHECKOUT_URL: '/api/create-checkout-session', // Real Stripe redirect endpoint
@@ -906,12 +906,6 @@ async function handlePayment() {
   btn.disabled = true;
   btn.textContent = 'REDIRECTING TO SECURE CHECKOUT...';
 
-  // Find the right price ID. In prod, you should use environment variables.
-  const MONTHLY_PRICE = 'price_1TMSI6V05gkWPOqDDhDusUlG';
-  const YEARLY_PRICE = 'price_1Q5...YOUR_YEARLY_ID_HERE'; // User needs to update this
-  
-  const selectedPrice = state.billingCycle === 'yearly' ? YEARLY_PRICE : MONTHLY_PRICE;
-
   try {
     const response = await fetch('/api/create-checkout-session', {
       method: 'POST',
@@ -919,7 +913,7 @@ async function handlePayment() {
       body: JSON.stringify({
         userId: state.user.uid,
         userEmail: state.user.email,
-        priceId: selectedPrice
+        planType: state.billingCycle
       })
     });
 
@@ -1426,9 +1420,49 @@ function calculateRR(levels) {
 function showComingSoon(feature) {
   const modal = document.getElementById('comingSoonModal');
   const title = document.getElementById('csFeatureName');
+  const waitlistBtn = document.getElementById('joinWaitlistBtn');
+  const waitlistEmail = document.getElementById('waitlistEmail');
+
   if (modal && title) {
     title.textContent = `${feature}`;
     modal.classList.remove('hidden');
+  }
+
+  if (waitlistBtn && waitlistEmail) {
+    waitlistBtn.onclick = async () => {
+      const email = waitlistEmail.value.trim();
+      if (!email || !email.includes('@')) {
+        alert('Please enter a valid institutional email.');
+        return;
+      }
+
+      waitlistBtn.disabled = true;
+      waitlistBtn.textContent = 'TRANSMITTING...';
+
+      try {
+        if (typeof firebase !== 'undefined') {
+          const db = firebase.firestore();
+          await db.collection('waitlist').add({
+            email,
+            feature,
+            timestamp: new Date().toISOString()
+          });
+          
+          const waitlistForm = document.getElementById('waitlistForm');
+          if (waitlistForm) {
+            waitlistForm.innerHTML = `<div style="color: var(--green); text-align: center; padding: 20px; border: 1px dashed var(--green); border-radius: 8px;">
+              <i class="fas fa-check-circle"></i> ACCESS GRANTED: You are on the priority list for ${feature}.
+            </div>`;
+          }
+        } else {
+          throw new Error('Firebase not initialized');
+        }
+      } catch (err) {
+        alert('Waitlist registration failed. Please try again.');
+        waitlistBtn.disabled = false;
+        waitlistBtn.textContent = 'JOIN PRIORITY WAITLIST';
+      }
+    };
   }
 }
 
@@ -1508,7 +1542,7 @@ function copySetupToClipboard() {
     `🎯 TP 1: ${tp1}\n` +
     `🎯 TP 2: ${tp2}\n` +
     `🎯 TP 3: ${tp3}\n\n` +
-    `Institutional Alpha Generated via Gemini 3 Flash.`;
+    `Institutional Alpha Generated via Gemini 2.0 Flash.`;
 
   navigator.clipboard.writeText(text).then(() => {
     el.copySetupBtn.classList.add('copied');

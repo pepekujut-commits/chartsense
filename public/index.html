@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="ChartSense AI — The premier institutional-grade trading terminal. Get real-time technical analysis, AI-powered trade setups, and professional market structure insights powered by Gemini 3 Flash." />
+  <meta name="description" content="ChartSense AI — The premier institutional-grade trading terminal. Get real-time technical analysis, AI-powered trade setups, and professional market structure insights powered by Gemini 2.0 Flash." />
   <meta name="keywords" content="AI trading, technical analysis, crypto signals, stock charts, institutional trading, Gemini AI, trading terminal" />
   <title>ChartSense AI — Professional Institutional Analysis</title>
   <link rel="stylesheet" href="elite-v4.css?v=2026.04.17-profix">
@@ -216,7 +216,14 @@
         <div class="status-msg">> ESTIMATED RELEASE: Q2 2026</div>
         <div class="status-msg">> ACCESS LEVEL: ELITE_ONLY</div>
       </div>
-      <button class="btn-primary btn-full" onclick="document.getElementById('comingSoonModal').classList.add('hidden')">ACKNOWLEDGE</button>
+      
+      <div id="waitlistForm" style="margin-bottom: 20px;">
+        <input type="email" id="waitlistEmail" placeholder="Enter email for priority access" 
+               style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 8px; color: white; margin-bottom: 12px; outline: none;">
+        <button class="btn-primary btn-full" id="joinWaitlistBtn">JOIN PRIORITY WAITLIST</button>
+      </div>
+
+      <button class="btn-ghost btn-full" onclick="document.getElementById('comingSoonModal').classList.add('hidden')">CLOSE</button>
     </div>
   </div>
 
@@ -226,7 +233,7 @@
     <div class="container">
       <div class="hero-badge">🚀 AI-Powered Technical Analysis — V5 ELITE</div>
       <h1 class="hero-title reveal-1">Trade with <span class="gradient-accent">Institutional</span> Edge.</h1>
-      <p class="hero-sub reveal-2">ChartSense AI uses Gemini 3 Flash to decode market structure and institutional order flow with 92% verified probability.</p>
+      <p class="hero-sub reveal-2">ChartSense AI uses Gemini 2.0 Flash to decode market structure and institutional order flow with 92% verified probability.</p>
       <div class="hero-cta-row">
         <a href="#analyzer" class="btn-primary btn-lg">Try it free →</a>
         <span class="free-badge">✓ 3 free analyses, no sign-up</span>

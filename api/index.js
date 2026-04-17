@@ -157,16 +157,14 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// ─── IN-MEMORY STATE ───
-const usageStats = {}; 
+// ─── UTILS ───
 const FREE_LIMIT = 3;
 
-// ─── ROUTES (API) ───
-app.get(['/api/status', '/status'], async (req, res) => {
+async function getUsage(req) {
+  const ip = req.headers['x-forwarded-for'] || req.ip || 'unknown';
   const authHeader = req.headers.authorization;
   let uid = null;
 
-  // Verify Firebase Token if present
   if (authHeader && authHeader.startsWith('Bearer ')) {
     try {
       const decodedToken = await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1]);
@@ -179,26 +177,64 @@ app.get(['/api/status', '/status'], async (req, res) => {
   if (uid && db) {
     const userDoc = await db.collection('users').doc(uid).get();
     if (userDoc.exists) {
-      const userData = userDoc.data();
-      return res.json({
-        creditsRemaining: userData.isPro ? '∞' : (userData.credits !== undefined ? userData.credits : 3),
-        isPro: userData.isPro || false
-      });
+      const data = userDoc.data();
+      return {
+        isPro: data.isPro || false,
+        creditsRemaining: data.isPro ? '∞' : (data.creditsRemaining !== undefined ? data.creditsRemaining : FREE_LIMIT),
+        uid
+      };
+    }
+    return { isPro: false, creditsRemaining: FREE_LIMIT, uid };
+  }
+
+  // Guest usage (IP-based Firestore)
+  if (db) {
+    const guestDoc = await db.collection('guests').doc(ip.replace(/\./g, '_')).get();
+    if (guestDoc.exists) {
+      const data = guestDoc.data();
+      return {
+        isPro: false,
+        creditsRemaining: Math.max(0, FREE_LIMIT - (data.count || 0)),
+        ip
+      };
     }
   }
 
-  // Fallback to IP-based for guests
-  const ip = req.headers['x-forwarded-for'] || req.ip || 'unknown';
-  if (!usageStats[ip]) usageStats[ip] = { count: 0, isPro: false };
+  return { isPro: false, creditsRemaining: FREE_LIMIT, ip };
+}
+
+async function incrementUsage(usage) {
+  if (usage.isPro || !db) return;
+
+  if (usage.uid) {
+    const userRef = db.collection('users').doc(usage.uid);
+    const doc = await userRef.get();
+    const currentCredits = doc.exists && doc.data().creditsRemaining !== undefined ? doc.data().creditsRemaining : FREE_LIMIT;
+    await userRef.set({ creditsRemaining: Math.max(0, currentCredits - 1) }, { merge: true });
+  } else if (usage.ip) {
+    const guestRef = db.collection('guests').doc(usage.ip.replace(/\./g, '_'));
+    const doc = await guestRef.get();
+    const currentCount = doc.exists ? (doc.data().count || 0) : 0;
+    await guestRef.set({ count: currentCount + 1, lastUsed: new Date().toISOString() }, { merge: true });
+  }
+}
+
+// ─── ROUTES (API) ───
+app.get(['/api/status', '/status'], async (req, res) => {
+  const usage = await getUsage(req);
   res.json({
-    creditsRemaining: Math.max(0, FREE_LIMIT - usageStats[ip].count),
-    isPro: usageStats[ip].isPro
+    creditsRemaining: usage.creditsRemaining,
+    isPro: usage.isPro
   });
 });
 
 app.post('/api/create-checkout-session', async (req, res) => {
-  const { priceId, userEmail, userId } = req.body;
-  const realPriceId = process.env.STRIPE_PRICE_ID || priceId || 'price_1P...PLACEHOLDER';
+  const { planType, userEmail, userId } = req.body;
+  
+  const monthlyPriceId = process.env.STRIPE_PRICE_ID_MONTHLY || 'price_1TMSI6V05gkWPOqDDhDusUlG';
+  const yearlyPriceId = process.env.STRIPE_PRICE_ID_YEARLY || 'price_1Q5...YOUR_YEARLY_ID_HERE';
+  
+  const realPriceId = planType === 'yearly' ? yearlyPriceId : monthlyPriceId;
   
   // If Stripe is not configured, simulate a successful checkout for development
   if (!stripe) {
@@ -378,18 +414,18 @@ app.get(['/api/screener', '/screener'], async (req, res) => {
 });
 
 app.post(['/api/analyze', '/analyze'], async (req, res) => {
-  const ip = req.headers['x-forwarded-for'] || req.ip || 'unknown';
   const API_KEY = process.env.GEMINI_API_KEY;
-
   if (!API_KEY) return res.status(500).json({ error: { message: 'Missing API Key' } });
-  if (!usageStats[ip]) usageStats[ip] = { count: 0, isPro: false };
 
-  if (!usageStats[ip].isPro && usageStats[ip].count >= FREE_LIMIT) {
+  const usage = await getUsage(req);
+
+  if (!usage.isPro && usage.creditsRemaining <= 0) {
     return res.status(403).json({ error: { message: 'Out of free analyses.' } });
   }
 
   const { model, contents, generationConfig } = req.body;
-  const analysisModel = model === "gemini-2.0-flash" || model === "gemini-1.5-flash" || model === "gemini-3-flash" ? "gemini-3-flash-preview" : (model || "gemini-3-flash-preview");
+  // Standardize to Gemini 2.0 Flash as the primary high-performance model
+  const analysisModel = "gemini-2.0-flash";
 
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${analysisModel}:generateContent?key=${API_KEY}`;
@@ -402,7 +438,7 @@ app.post(['/api/analyze', '/analyze'], async (req, res) => {
     
     if (response.ok) {
       if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-        console.log(`[Gemini 3 Flash] SUCCESS:`, data.candidates[0].content.parts[0].text);
+        console.log(`[Gemini 2.0 Flash] SUCCESS:`, data.candidates[0].content.parts[0].text);
         
         // Save to History (V5 Elite)
         const authHeader = req.headers.authorization;
@@ -427,11 +463,12 @@ app.post(['/api/analyze', '/analyze'], async (req, res) => {
             console.warn('Analysis save failed (deferred):', e.message);
           }
         }
-      } else {
-        console.warn(`[Gemini 3 Flash] EMPTY/ERROR:`, JSON.stringify(data, null, 2));
       }
-      if (!usageStats[ip].isPro) usageStats[ip].count++;
-      return res.json({ ...data, creditsRemaining: usageStats[ip].isPro ? null : Math.max(0, FREE_LIMIT - usageStats[ip].count) });
+      
+      await incrementUsage(usage);
+      const updatedUsage = await getUsage(req);
+      
+      return res.json({ ...data, creditsRemaining: updatedUsage.isPro ? null : updatedUsage.creditsRemaining });
     } else {
       console.error('Gemini API Error:', data);
       const isLeaked = data.error?.message?.toLowerCase().includes('leaked') || data.error?.status === 'PERMISSION_DENIED';
