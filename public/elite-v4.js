@@ -769,6 +769,10 @@ async function handleRefreshStatus() {
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
 
   try {
+    // If checkout returned a session_id but webhook didn't fulfill yet,
+    // attempt server-side fulfillment first.
+    await tryFulfillPendingCheckoutSession();
+
     const db = firebase.firestore();
     const doc = await db.collection('users').doc(state.user.uid).get();
     
@@ -791,6 +795,45 @@ async function handleRefreshStatus() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Subscription Status';
+  }
+}
+
+function getPendingCheckoutSessionId() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return (
+      params.get('session_id') ||
+      localStorage.getItem('pendingStripeSessionId') ||
+      null
+    );
+  } catch {
+    return localStorage.getItem('pendingStripeSessionId') || null;
+  }
+}
+
+async function tryFulfillPendingCheckoutSession() {
+  const sessionId = getPendingCheckoutSessionId();
+  if (!sessionId) return false;
+  if (!state.user) return false;
+
+  try {
+    const token = await firebase.auth().currentUser.getIdToken();
+    const resp = await fetch(`/api/fulfill-checkout-session?session_id=${encodeURIComponent(sessionId)}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      // Surface the real reason so you can fix env/webhook quickly.
+      console.warn('Fulfillment failed:', err?.error || resp.status);
+      return false;
+    }
+
+    localStorage.removeItem('pendingStripeSessionId');
+    return true;
+  } catch (e) {
+    console.warn('Fulfillment request failed:', e?.message || e);
+    return false;
   }
 }
 
@@ -921,7 +964,24 @@ async function handleManageSubscription() {
     if (data.url) {
       window.location.href = data.url;
     } else {
-      throw new Error(data.error || 'Upgrade to Pro first to manage subscription.');
+      // If the webhook didn't write stripeCustomer/subscriptionId yet, try fulfillment fallback then retry once.
+      const msg = data.error || 'Upgrade to Pro first to manage subscription.';
+      const didFulfill = await tryFulfillPendingCheckoutSession();
+      if (didFulfill) {
+        const retry = await fetch('/api/create-portal-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const retryData = await retry.json();
+        if (retryData.url) {
+          window.location.href = retryData.url;
+          return;
+        }
+      }
+      throw new Error(msg);
     }
   } catch (err) {
     alert('Billing node error: ' + err.message);
