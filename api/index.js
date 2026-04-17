@@ -143,6 +143,7 @@ app.use(express.json({ limit: '10mb' }));
 
 // ─── HEALTH CHECK (DIAGNOSTICS) ───
 app.get(['/api/health', '/health'], (req, res) => {
+  console.log('Health check requested at:', new Date().toISOString());
   const apiKey = process.env.GEMINI_API_KEY;
   const hasValidKey = !!apiKey && apiKey !== 'TVUJ_NOVY_KLIC_ZDE' && apiKey.startsWith('AIzaSy');
   
