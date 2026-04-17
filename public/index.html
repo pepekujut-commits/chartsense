@@ -295,7 +295,10 @@
       </div>
       <div class="stat-item" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
         <div class="stat-label">System Status</div>
-        <div class="stat-value" style="font-size: 14px; color: var(--green);" id="healthDot">● Operational</div>
+        <div class="stat-value" style="font-size: 14px; display: flex; align-items: center; gap: 8px;" id="healthStatus">
+          <div class="health-dot" id="healthDot"></div>
+          <span id="healthText">Operational</span>
+        </div>
       </div>
     </aside>
 

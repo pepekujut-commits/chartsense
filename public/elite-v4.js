@@ -52,6 +52,7 @@ let state = {
 // ─── HEALTH CHECK (DIAGNOSTICS) ───
 async function checkHealth() {
   const dot = document.getElementById('healthDot');
+  const text = document.getElementById('healthText');
   if (!dot) return;
   try {
     const res = await fetch(CONFIG.HEALTH_URL);
@@ -59,14 +60,18 @@ async function checkHealth() {
       const data = await res.json();
       dot.classList.remove('err');
       dot.classList.add('ok');
+      if (text) text.textContent = 'Operational';
 
       let tooltip = `API Connected (v${data.version})`;
       if (!data.hasApiKey || data.apiKeyNote === 'Missing') {
         tooltip += ' - ACTION REQUIRED: Paste your NEW Gemini API Key into .env';
         dot.style.background = 'var(--yellow)';
+        dot.style.boxShadow = '0 0 10px var(--yellow)';
+        if (text) text.textContent = 'Setup Required';
       } else {
         tooltip += ' - API Key Ready';
-        dot.style.background = 'var(--green)';
+        dot.style.background = ''; // Use CSS default
+        dot.style.boxShadow = '';
       }
       dot.title = tooltip;
       state.healthChecked = true;
@@ -76,6 +81,7 @@ async function checkHealth() {
   } catch (err) {
     dot.classList.remove('ok');
     dot.classList.add('err');
+    if (text) text.textContent = 'Offline';
     dot.title = 'API Connection Failed. Server may be starting or offline.';
     console.error('API Connection Failed. Please check Vercel logs.');
   }
@@ -439,6 +445,8 @@ function setupAuthListener() {
     console.log('Auth state change detected:', user ? user.email : 'LOGGED_OUT');
     state.user = user;
     checkAnalyzeStatus(); // Sync button state early
+    
+    if (user) {
       // Always refresh server-side claims first
       await user.reload().catch(() => {});
       state.user = firebase.auth().currentUser;
