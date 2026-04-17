@@ -245,7 +245,7 @@ function checkUrlParams() {
   const status = params.get('status');
   const sessionId = params.get('session_id');
   if (status === 'success') {
-    alert('✨ INSTITUTIONAL ACCESS GRANTED. Welcome to the Elite tier.');
+    // alert('✨ INSTITUTIONAL ACCESS GRANTED. Welcome to the Elite tier.'); // Replaced with modal
     if (sessionId) {
       localStorage.setItem('pendingStripeSessionId', sessionId);
     }
@@ -505,7 +505,8 @@ function setupAuthListener() {
           if (resp.ok) {
             localStorage.removeItem('pendingStripeSessionId');
             await syncStatus();
-            alert('✨ SUCCESS: Elite Pro activated. Your institutional access is now live.');
+            // alert('✨ SUCCESS: Elite Pro activated. Your institutional access is now live.'); // Replaced with modal
+            el.successModal.classList.remove('hidden');
           } else {
             const err = await resp.json().catch(() => ({}));
             console.warn('Fulfillment failed:', err?.error || resp.status);
@@ -855,7 +856,8 @@ async function handleRefreshStatus() {
       syncSettingsUI();
 
       if (state.isPro) {
-        alert('✨ SUCCESS: Elite Pro status verified. Your institutional access is active.');
+        // alert('✨ SUCCESS: Elite Pro status verified. Your institutional access is active.'); // Replaced with modal
+        el.successModal.classList.remove('hidden');
       } else {
         alert('Status verified: No active subscription found in your institutional record yet. If you recently paid, please wait 60 seconds and refresh.');
       }

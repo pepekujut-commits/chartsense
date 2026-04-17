@@ -794,6 +794,16 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
+  <!-- ─── SUBSCRIPTION SUCCESS MODAL ─── -->
+  <div id="successModal" class="modal-overlay hidden">
+    <div class="modal-content success-modal-content">
+      <div class="success-icon">✨</div>
+      <h2 class="modal-title">Welcome to Elite Access!</h2>
+      <p class="modal-description">You now have unlimited AI analyses, priority processing, and exclusive features.</p>
+      <button class="btn-primary btn-full" onclick="el.successModal.classList.add('hidden');">Start Analyzing</button>
+    </div>
+  </div>
+
   <!-- ─── EMERGENCY DIAGNOSTICS (V5) ─── -->
   <div id="diagPanel" style="position: fixed; bottom: 20px; right: 20px; background: rgba(0,0,0,0.9); border: 1px solid var(--purple); padding: 12px; border-radius: 8px; z-index: 10000; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #fff; pointer-events: none; transition: opacity 0.3s;">
     <div style="color: var(--purple); font-weight: bold; margin-bottom: 5px;">SYSTEM DIAGNOSTICS</div>
@@ -805,6 +815,6 @@
     <div id="diagError" style="color: var(--red); margin-top: 5px; display: none;"></div>
   </div>
 
-  <script src="elite-v4.js?v=2026.04.17-ANIMATIONS-V1"></script>
+  <script src="elite-v4.js?v=2026.04.17-ANIMATIONS-V2"></script>
 </body>
 </html>
