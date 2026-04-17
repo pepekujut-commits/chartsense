@@ -1,3 +1,4 @@
+console.log('elite-v4.js loaded');
 console.log('--- CHARTSENSE BOOTING ---');
 const CONFIG = {
   DEFAULT_MODEL: 'gemini-3-flash-preview',
@@ -1468,4 +1469,8 @@ function fileToBase64(file) {
   });
 }
 
-init();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => init());
+} else {
+  init();
+}
