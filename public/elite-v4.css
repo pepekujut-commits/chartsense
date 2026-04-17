@@ -998,6 +998,75 @@ body {
   backdrop-filter: blur(6px);
   z-index: 1000;
   display: flex;
+}
+
+/* â”€â”€â”€ PREMIUM ANIMATIONS (V5) â”€â”€â”€ */
+.loading-redirect {
+  overflow: hidden; /* Prevent scrollbar during redirect */
+}
+
+.loading-redirect::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 24px;
+  color: white;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.loading-redirect::after {
+  content: 'TRANSMITTING TO SECURE GATEWAY...';
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 24px;
+  color: white;
+  z-index: 100000;
+  animation: pulseGlow 1.5s infinite alternate;
+}
+
+@keyframes pulseGlow {
+  from { text-shadow: 0 0 5px rgba(255,255,255,0.5), 0 0 10px rgba(139,92,246,0.8); }
+  to { text-shadow: 0 0 10px rgba(255,255,255,0.8), 0 0 20px rgba(139,92,246,1); }
+}
+
+/* Pro Active Badge Glow */
+.pro-active {
+  position: relative;
+  overflow: hidden;
+}
+
+.pro-active::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(45deg, #8b5cf6, #ec4899, #8b5cf6);
+  background-size: 200% 200%;
+  animation: glowingBorder 3s linear infinite;
+  border-radius: inherit;
+  filter: blur(8px);
+  opacity: 0.7;
+  z-index: -1;
+}
+
+@keyframes glowingBorder {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.pro-active.btn-primary, .pro-active.btn-ghost {
+  box-shadow: 0 0 20px rgba(139,92,246,0.6) !important;
+}
   align-items: center;
   justify-content: center;
   padding: 24px;
@@ -1724,7 +1793,7 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ¦¦¦ SETTINGS MODAL (V5 ELITE) ¦¦¦ */
+/* ï¿½ï¿½ï¿½ SETTINGS MODAL (V5 ELITE) ï¿½ï¿½ï¿½ */
 #settingsModal {
   z-index: 2000;
 }
@@ -1816,6 +1885,6 @@ body {
 }
 
 
-/* ¦¦¦ PRO ACTIVE STATES ¦¦¦ */
+/* ï¿½ï¿½ï¿½ PRO ACTIVE STATES ï¿½ï¿½ï¿½ */
 .btn-primary.pro-active, .btn-ghost.pro-active, .link-btn-pro.pro-active { background: var(--purple-glow) !important; color: white !important; border: 1px solid var(--purple) !important; cursor: default !important; pointer-events: none; opacity: 0.8; }
 .status-badge.pro { background: var(--purple-glow); color: var(--purple); border: 1px solid var(--purple); }

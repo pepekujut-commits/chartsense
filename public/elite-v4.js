@@ -1043,7 +1043,7 @@ async function handlePayment() {
 
   const btn = el.completeCheckout;
   btn.disabled = true;
-  btn.textContent = 'REDIRECTING TO SECURE CHECKOUT...';
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> REDIRECTING...'; // Added spinner
 
   try {
     const response = await fetch('/api/create-checkout-session', {
@@ -1058,6 +1058,8 @@ async function handlePayment() {
 
     const data = await response.json();
     if (data.url) {
+      // Optional: Add a full-screen loading overlay here before redirect
+      document.body.classList.add('loading-redirect'); 
       window.location.href = data.url;
     } else {
       throw new Error(data.error || 'Could not initiate institutional checkout.');
@@ -1066,7 +1068,8 @@ async function handlePayment() {
     alert(err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Start Your Subscription';
+    btn.innerHTML = 'Unlock Elite Access'; // Reset button text
+    document.body.classList.remove('loading-redirect');
   }
 }
 
