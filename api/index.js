@@ -236,6 +236,54 @@ app.post('/api/create-checkout-session', async (req, res) => {
   }
 });
 
+app.get('/api/fulfill-checkout-session', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const sessionId = req.query.session_id;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  if (!sessionId) {
+    return res.status(400).json({ error: 'Missing session_id' });
+  }
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe is not initialized' });
+  }
+  if (!db) {
+    return res.status(500).json({ error: 'Database not initialized' });
+  }
+
+  try {
+    const token = authHeader.split('Bearer ')[1];
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    const uid = decodedToken.uid;
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const refUserId = session.client_reference_id || session.metadata?.userId;
+
+    if (refUserId && refUserId !== uid) {
+      return res.status(403).json({ error: 'Session does not belong to this user' });
+    }
+
+    if (session.mode !== 'subscription' || session.payment_status !== 'paid') {
+      return res.status(400).json({ error: 'Checkout not completed/paid' });
+    }
+
+    await db.collection('users').doc(uid).set({
+      isPro: true,
+      stripeCustomer: session.customer,
+      subscriptionId: session.subscription,
+      planType: 'pro',
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    return res.json({ ok: true, isPro: true });
+  } catch (error) {
+    console.error('Fulfillment Error:', error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/create-portal-session', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

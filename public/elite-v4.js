@@ -202,10 +202,14 @@ async function init() {
 function checkUrlParams() {
   const params = new URLSearchParams(window.location.search);
   const status = params.get('status');
+  const sessionId = params.get('session_id');
   if (status === 'success') {
     alert('✨ INSTITUTIONAL ACCESS GRANTED. Welcome to the Elite tier.');
-    // Clean up URL
-    window.history.replaceState({}, document.title, window.location.pathname);
+    if (sessionId) {
+      localStorage.setItem('pendingStripeSessionId', sessionId);
+    }
+    // Clean up URL (keep hash routing intact)
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
   } else if (status === 'cancel') {
     console.log('Institutional checkout aborted by user.');
   }
@@ -427,6 +431,28 @@ function setupAuthListener() {
 
       console.log('Institutional session active (verified):', state.user.email);
       await syncStatus(); // Sync Pro/Credits from Firestore
+
+      // Fallback fulfillment: if checkout succeeded but webhook didn't run yet,
+      // finalize Pro activation using the Stripe session_id.
+      const pendingSessionId = localStorage.getItem('pendingStripeSessionId');
+      if (pendingSessionId) {
+        try {
+          const token = await firebase.auth().currentUser.getIdToken();
+          const resp = await fetch(`/api/fulfill-checkout-session?session_id=${encodeURIComponent(pendingSessionId)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (resp.ok) {
+            localStorage.removeItem('pendingStripeSessionId');
+            await syncStatus();
+            alert('✨ SUCCESS: Elite Pro activated. Your institutional access is now live.');
+          } else {
+            const err = await resp.json().catch(() => ({}));
+            console.warn('Fulfillment failed:', err?.error || resp.status);
+          }
+        } catch (e) {
+          console.warn('Fulfillment request failed:', e?.message || e);
+        }
+      }
     } else {
       console.log('Awaiting institutional login...');
       state.isPro = false;
