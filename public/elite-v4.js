@@ -786,9 +786,9 @@ function handleFile(file) {
 // ─── CREDITS & STATUS ───
 function updateCreditsUI() {
   const pricingBtn = document.querySelector('#pricing .price-card.featured .btn-primary');
-  const isActuallyPro = state.isPro === true || state.isPro === 'true';
+  const isPro = isActuallyPro();
 
-  if (isActuallyPro) {
+  if (isPro) {
     el.creditsCount.textContent = '∞';
     el.creditsCount.style.color = 'var(--purple)';
     
@@ -911,6 +911,7 @@ function checkAnalyzeStatus() {
   try {
     const btn = document.getElementById('analyzeBtn');
     const imageVisible = el.previewImg && !el.previewImg.classList.contains('hidden') && el.previewImg.src && el.previewImg.src.length > 100;
+    const isPro = isActuallyPro();
     
     // ─── UPDATE DIAGNOSTICS ───
     const d = {
@@ -923,7 +924,7 @@ function checkAnalyzeStatus() {
     };
 
     if (d.user) d.user.textContent = state.user ? state.user.email : 'Logged Out';
-    if (d.pro) d.pro.textContent = state.isPro ? 'YES (ELITE)' : 'NO';
+    if (d.pro) d.pro.textContent = isPro ? 'YES (ELITE)' : 'NO';
     if (d.credits) d.credits.textContent = state.creditsRemaining;
     if (d.image) d.image.textContent = imageVisible ? 'READY' : 'MISSING';
     
@@ -960,10 +961,7 @@ function checkAnalyzeStatus() {
 
     // ─── PAYWALL OVERRIDE ───
     if (el.paywallOverlay) {
-      const isActuallyPro = state.isPro === true || state.isPro === 'true';
-      const hasCredits = state.creditsRemaining > 0 || state.creditsRemaining === '∞';
-      
-      if (isActuallyPro || hasCredits) {
+      if (isPro || state.creditsRemaining > 0 || state.creditsRemaining === '∞') {
         el.paywallOverlay.classList.add('hidden');
         el.paywallOverlay.style.setProperty('display', 'none', 'important');
         el.paywallOverlay.style.setProperty('visibility', 'hidden', 'important');
@@ -1136,9 +1134,16 @@ function exportToPdf() {
 }
 
 // ─── ANALYSIS LOGIC ───
+function isActuallyPro() {
+  return state.isPro === true || state.isPro === 'true';
+}
+
 async function startAnalysis() {
   if (state.isAnalyzing) return;
   
+  const isPro = isActuallyPro();
+  console.log('--- STARTING ANALYSIS (ELITE CORE) ---', { isPro, credits: state.creditsRemaining });
+
   // Re-sync state with UI right before starting
   const imageVisible = el.previewImg && !el.previewImg.classList.contains('hidden') && el.previewImg.src && el.previewImg.src.length > 100;
   
@@ -1147,15 +1152,11 @@ async function startAnalysis() {
     return;
   }
 
-  // FORCE CREDITS FOR PRO USERS (Local Override)
-  if (state.isPro) {
-    state.creditsRemaining = 999;
-  }
-
   // GATING: 3 Free Credits otherwise Premium
-  const hasCredits = state.isPro === true || (typeof state.creditsRemaining === 'number' && state.creditsRemaining > 0);
+  const hasCredits = isPro || (typeof state.creditsRemaining === 'number' && state.creditsRemaining > 0) || state.creditsRemaining === '∞';
   
   if (!hasCredits) {
+    console.warn('Analysis blocked: Gating triggered.', { isPro, hasCredits });
     if (!state.user) {
       el.authModal.classList.remove('hidden');
     } else {
@@ -1163,6 +1164,9 @@ async function startAnalysis() {
     }
     return;
   }
+
+  // If we got here, ensure checkout modal is HIDDEN
+  if (el.checkoutModal) el.checkoutModal.classList.add('hidden');
 
   // Robust Image Capture
   let base64Image = null;
