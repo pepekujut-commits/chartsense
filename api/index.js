@@ -178,22 +178,32 @@ async function getUsage(req) {
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     try {
-      const decodedToken = await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1]);
+      const token = authHeader.split('Bearer ')[1];
+      const decodedToken = await admin.auth().verifyIdToken(token);
       uid = decodedToken.uid;
+      console.log(`[AUTH_VERIFIED] UID: ${uid}`);
     } catch (e) {
-      console.warn('Invalid token');
+      console.warn('[AUTH_ERROR] Token verification failed:', e.message);
     }
   }
 
   if (uid && db) {
-    const userDoc = await db.collection('users').doc(uid).get();
-    if (userDoc.exists) {
-      const data = userDoc.data();
-      return {
-        isPro: data.isPro || false,
-        creditsRemaining: data.isPro ? '∞' : (data.creditsRemaining !== undefined ? data.creditsRemaining : FREE_LIMIT),
-        uid
-      };
+    try {
+      const userDoc = await db.collection('users').doc(uid).get();
+      if (userDoc.exists) {
+        const data = userDoc.data();
+        console.log(`[DB_LOOKUP] UID: ${uid} | isPro: ${data.isPro} | credits: ${data.creditsRemaining}`);
+        return {
+          isPro: data.isPro === true || data.isPro === 'true',
+          creditsRemaining: data.isPro ? '∞' : (data.creditsRemaining !== undefined ? data.creditsRemaining : FREE_LIMIT),
+          uid
+        };
+      }
+      console.log(`[DB_LOOKUP] UID: ${uid} | Not found in Firestore. Creating default...`);
+      // Auto-create if not found
+      await db.collection('users').doc(uid).set({ email: 'unknown', isPro: false, creditsRemaining: FREE_LIMIT }, { merge: true });
+    } catch (e) {
+      console.error(`[DB_ERROR] Firestore lookup failed for ${uid}:`, e.message);
     }
     return { isPro: false, creditsRemaining: FREE_LIMIT, uid };
   }
@@ -431,9 +441,11 @@ app.post(['/api/analyze', '/analyze'], async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error: { message: 'Missing API Key' } });
 
   const usage = await getUsage(req);
+  console.log(`[ANALYZE_REQUEST] User: ${usage.uid || usage.ip} | Pro: ${usage.isPro} | Credits: ${usage.creditsRemaining}`);
 
+  // GATING FIX: If user is Pro, they MUST bypass the 403 credit check.
   if (!usage.isPro && usage.creditsRemaining <= 0) {
-    return res.status(403).json({ error: { message: 'Out of free analyses.' } });
+    return res.status(403).json({ error: { message: 'Out of free analyses. Upgrade to Pro for unlimited access.' } });
   }
 
   const { model, contents, generationConfig } = req.body;
