@@ -196,6 +196,7 @@ async function init() {
   setupAuthListener();
   startLiveStats();
   initScreener();
+  checkAnalyzeStatus();
   console.log("%c CHARTSENSE ELITE V5 ACTIVE ", "background: #8b5cf6; color: white; font-weight: bold; border-radius: 4px; padding: 2px 8px;");
 }
 
@@ -223,6 +224,7 @@ function hydrateElements() {
       el[key] = document.getElementById(key);
     }
   }
+  checkAnalyzeStatus();
 }
 
 /**
@@ -278,6 +280,7 @@ async function syncStatus() {
   } catch (e) {
     console.warn('Backend sync deferred: using local state (Pro Trial Mode)');
     updateCreditsUI();
+    checkAnalyzeStatus();
   }
 }
 
@@ -411,8 +414,7 @@ function setupAuthListener() {
   firebase.auth().onAuthStateChanged(async (user) => {
     console.log('Auth state change detected:', user ? user.email : 'LOGGED_OUT');
     state.user = user;
-    
-    if (user) {
+    checkAnalyzeStatus(); // Sync button state early
       // Always refresh server-side claims first
       await user.reload().catch(() => {});
       state.user = firebase.auth().currentUser;
@@ -457,6 +459,7 @@ function setupAuthListener() {
       console.log('Awaiting institutional login...');
       state.isPro = false;
       state.creditsRemaining = 3;
+      checkAnalyzeStatus();
     }
 
     updateAuthUI();
@@ -708,6 +711,8 @@ function handleFile(file) {
   if (!file || !file.type.startsWith('image/')) return;
 
   state.selectedFile = file;
+  checkAnalyzeStatus(); // Enable early if possible
+
   const reader = new FileReader();
   reader.onload = (e) => {
     el.previewImg.src = e.target.result;
@@ -840,9 +845,17 @@ async function tryFulfillPendingCheckoutSession() {
 }
 
 function checkAnalyzeStatus() {
+  if (!el.analyzeBtn) {
+    el.analyzeBtn = document.getElementById('analyzeBtn');
+    if (!el.analyzeBtn) return;
+  }
   const hasImage = !!state.selectedFile;
-  const hasCredits = state.creditsRemaining > 0 || state.isPro;
-  el.analyzeBtn.disabled = !hasImage || !hasCredits || state.isAnalyzing;
+  const hasCredits = state.isPro || state.creditsRemaining > 0;
+  const isAnalyzing = state.isAnalyzing;
+  
+  console.log(`[Status Check] Image: ${hasImage}, Credits: ${hasCredits}, Analyzing: ${isAnalyzing}, Pro: ${state.isPro}`);
+  
+  el.analyzeBtn.disabled = !hasImage || !hasCredits || isAnalyzing;
 }
 
 function isUserVerified(user) {
