@@ -277,20 +277,22 @@ async function syncStatus() {
 }
 
 function setupEventListeners() {
-  // Upload handlers
-  el.dropzone.onclick = () => el.fileInput.click();
-  el.fileInput.onchange = (e) => handleFile(e.target.files[0]);
+  // Upload handlers (guarded so missing DOM doesn't break everything)
+  if (el.dropzone && el.fileInput) {
+    el.dropzone.onclick = () => el.fileInput.click();
+    el.fileInput.onchange = (e) => handleFile(e.target.files[0]);
 
-  el.dropzone.ondragover = (e) => { e.preventDefault(); el.dropzone.classList.add('drag-over'); };
-  el.dropzone.ondragleave = () => el.dropzone.classList.remove('drag-over');
-  el.dropzone.ondrop = (e) => {
-    e.preventDefault();
-    el.dropzone.classList.remove('drag-over');
-    handleFile(e.dataTransfer.files[0]);
-  };
+    el.dropzone.ondragover = (e) => { e.preventDefault(); el.dropzone.classList.add('drag-over'); };
+    el.dropzone.ondragleave = () => el.dropzone.classList.remove('drag-over');
+    el.dropzone.ondrop = (e) => {
+      e.preventDefault();
+      el.dropzone.classList.remove('drag-over');
+      handleFile(e.dataTransfer.files[0]);
+    };
+  }
 
   // Analysis
-  el.analyzeBtn.onclick = startAnalysis;
+  if (el.analyzeBtn) el.analyzeBtn.onclick = startAnalysis;
 
   // Auth Handlers
   console.log('Attaching auth listeners...', !!el.authForm);
@@ -326,7 +328,7 @@ function setupEventListeners() {
   }
 
   // Checkout Handlers
-  el.upgradeBtn.onclick = () => {
+  if (el.upgradeBtn) el.upgradeBtn.onclick = () => {
     if (!state.user) {
       state.pendingAction = 'checkout';
       el.authModal.classList.remove('hidden');
@@ -338,7 +340,7 @@ function setupEventListeners() {
   };
   if (el.closeCheckout) el.closeCheckout.onclick = () => el.checkoutModal.classList.add('hidden');
   if (el.completeCheckout) el.completeCheckout.onclick = handlePayment;
-  el.exportPdfBtn.onclick = exportToPdf;
+  if (el.exportPdfBtn) el.exportPdfBtn.onclick = exportToPdf;
 
   // Billing Toggle
   if (el.billingToggle) {
@@ -366,8 +368,8 @@ function setupEventListeners() {
   if (el.refreshStatusBtn) el.refreshStatusBtn.onclick = handleRefreshStatus;
   
   // Chat Handlers
-  el.chatSendBtn.onclick = sendChat;
-  el.chatInput.onkeypress = (e) => { if (e.key === 'Enter') sendChat(); };
+  if (el.chatSendBtn) el.chatSendBtn.onclick = sendChat;
+  if (el.chatInput) el.chatInput.onkeypress = (e) => { if (e.key === 'Enter') sendChat(); };
 
   // History Handlers
   if (el.historyBtn) el.historyBtn.onclick = (e) => {
@@ -382,16 +384,17 @@ function setupEventListeners() {
       console.warn('History fetch failed:', err?.message || err);
     });
   };
-  if (el.closeHistory) el.closeHistory.onclick = () => el.historyPanel.classList.add('hidden');
+  if (el.closeHistory) el.closeHistory.onclick = () => el.historyPanel?.classList.add('hidden');
 
   // Ticket Actions
   if (el.copySetupBtn) el.copySetupBtn.onclick = copySetupToClipboard;
 
   // Generic close for modals and menus
   window.onclick = (event) => {
-    if (event.target === el.authModal) el.authModal.classList.add('hidden');
-    if (event.target === el.checkoutModal) el.checkoutModal.classList.add('hidden');
-    if (event.target === document.getElementById('comingSoonModal')) document.getElementById('comingSoonModal').classList.add('hidden');
+    if (event.target === el.authModal) el.authModal?.classList.add('hidden');
+    if (event.target === el.checkoutModal) el.checkoutModal?.classList.add('hidden');
+    const comingSoon = document.getElementById('comingSoonModal');
+    if (event.target === comingSoon) comingSoon?.classList.add('hidden');
     if (!event.target.closest('#userProfile') && el.userMenu) el.userMenu.classList.add('hidden');
   };
 }
