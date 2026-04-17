@@ -142,7 +142,7 @@ app.post('/api/webhook', express.raw({type: 'application/json'}), async (req, re
 app.use(express.json({ limit: '10mb' }));
 
 // ─── HEALTH CHECK (DIAGNOSTICS) ───
-app.get('/api/health', (req, res) => {
+app.get(['/api/health', '/health'], (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   const hasValidKey = !!apiKey && apiKey !== 'TVUJ_NOVY_KLIC_ZDE' && apiKey.startsWith('AIzaSy');
   
@@ -153,7 +153,11 @@ app.get('/api/health', (req, res) => {
     hasApiKey: hasValidKey,
     apiKeyNote: hasValidKey ? 'Present' : 'Missing or Invalid',
     isHealthy: hasValidKey,
-    time: new Date().toISOString() 
+    time: new Date().toISOString(),
+    services: {
+      stripe: !!stripe,
+      firebase: !!db
+    }
   });
 });
 
@@ -397,14 +401,16 @@ app.get(['/api/screener', '/screener'], async (req, res) => {
     
     // Normalize CryptoCompare data into a simpler flat array for the UI
     const rawData = result.RAW || {};
-    const normalized = Object.keys(rawData).map(symbol => {
-      const data = rawData[symbol].USDT;
-      return {
-        symbol: symbol + "USDT",
-        lastPrice: data.PRICE,
-        priceChangePercent: data.CHANGEPCT24HOUR
-      };
-    });
+    const normalized = Object.keys(rawData)
+      .filter(symbol => rawData[symbol] && rawData[symbol].USDT)
+      .map(symbol => {
+        const data = rawData[symbol].USDT;
+        return {
+          symbol: symbol + "USDT",
+          lastPrice: data.PRICE || 0,
+          priceChangePercent: data.CHANGEPCT24HOUR || 0
+        };
+      });
     
     res.json(normalized);
   } catch (error) {

@@ -1,5 +1,11 @@
 console.log('elite-v4.js loaded');
 console.log('--- CHARTSENSE BOOTING ---');
+
+window.onerror = function(msg, url, lineNo, columnNo, error) {
+  console.error('GLOBAL ERROR:', msg, 'at', url, 'line:', lineNo, 'col:', columnNo, error);
+  return false;
+};
+
 const CONFIG = {
   DEFAULT_MODEL: 'gemini-3-flash-preview',
   BACKEND_URL: '/api/analyze',
@@ -181,23 +187,31 @@ const el = {
 
 // ─── INIT ───
 async function init() {
-  console.log('--- INITIALIZING ELITE CORE ---');
-  hydrateElements(); 
-  
-  if (!el.completeCheckout) {
-    console.error('CRITICAL: completeCheckout button not found in DOM.');
-  } else {
-    console.log('SUCCESS: completeCheckout button bound.');
-  }
+  try {
+    console.log('--- INITIALIZING ELITE CORE ---');
+    hydrateElements(); 
+    
+    if (!el.completeCheckout) {
+      console.warn('completeCheckout button not found in DOM.');
+    } else {
+      console.log('SUCCESS: completeCheckout button bound.');
+    }
 
-  setupEventListeners(); 
-  checkUrlParams();
-  checkHealth(); 
-  setupAuthListener();
-  startLiveStats();
-  initScreener();
-  checkAnalyzeStatus();
-  console.log("%c CHARTSENSE ELITE V5 ACTIVE ", "background: #8b5cf6; color: white; font-weight: bold; border-radius: 4px; padding: 2px 8px;");
+    setupEventListeners(); 
+    checkUrlParams();
+    checkHealth(); 
+    setupAuthListener();
+    startLiveStats();
+    initScreener();
+    checkAnalyzeStatus();
+    console.log("%c CHARTSENSE ELITE V5 ACTIVE ", "background: #8b5cf6; color: white; font-weight: bold; border-radius: 4px; padding: 2px 8px;");
+  } catch (err) {
+    console.error('CRITICAL: ChartSense initialization failed.', err);
+    // Attempt to recover by calling hydrate/check again
+    setTimeout(() => {
+      try { hydrateElements(); checkAnalyzeStatus(); } catch (e) {}
+    }, 2000);
+  }
 }
 
 function checkUrlParams() {
@@ -219,9 +233,19 @@ function checkUrlParams() {
 // setupAuthListener moved to unified definition below
 
 function hydrateElements() {
+  console.log('Hydrating DOM elements...');
   for (const key in el) {
-    if (el[key] === null || el[key] === undefined || (el[key] instanceof HTMLElement && !document.contains(el[key]))) {
-      el[key] = document.getElementById(key);
+    const current = el[key];
+    const isElement = current && typeof current === 'object' && current.nodeType === 1;
+    const isDisconnected = isElement && !document.contains(current);
+
+    if (!isElement || isDisconnected) {
+      const found = document.getElementById(key);
+      if (found) {
+        el[key] = found;
+      } else {
+        console.warn(`Element with ID "${key}" not found in DOM.`);
+      }
     }
   }
   checkAnalyzeStatus();
@@ -847,15 +871,17 @@ async function tryFulfillPendingCheckoutSession() {
 function checkAnalyzeStatus() {
   if (!el.analyzeBtn) {
     el.analyzeBtn = document.getElementById('analyzeBtn');
-    if (!el.analyzeBtn) return;
   }
+  
   const hasImage = !!state.selectedFile;
   const hasCredits = state.isPro || state.creditsRemaining > 0;
   const isAnalyzing = state.isAnalyzing;
   
   console.log(`[Status Check] Image: ${hasImage}, Credits: ${hasCredits}, Analyzing: ${isAnalyzing}, Pro: ${state.isPro}`);
   
-  el.analyzeBtn.disabled = !hasImage || !hasCredits || isAnalyzing;
+  if (el.analyzeBtn) {
+    el.analyzeBtn.disabled = !hasImage || !hasCredits || isAnalyzing;
+  }
 }
 
 function isUserVerified(user) {
@@ -1292,7 +1318,18 @@ async function updateScreener() {
 
   try {
     const res = await fetch(CONFIG.SCREENER_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+
+    if (!Array.isArray(data)) {
+      console.warn('Screener data is not an array:', data);
+      return;
+    }
+
+    if (data.length === 0) {
+      el.screenerBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-dim);">No active institutional signals detected.</td></tr>';
+      return;
+    }
 
     el.screenerBody.innerHTML = data.map(coin => {
       const price = parseFloat(coin.lastPrice);
