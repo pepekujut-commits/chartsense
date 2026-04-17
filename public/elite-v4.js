@@ -792,6 +792,7 @@ function updateCreditsUI() {
   if (isPro) {
     el.creditsCount.textContent = '∞';
     el.creditsCount.style.color = 'var(--purple)';
+    el.creditsCount.classList.add('pro-active'); // Add pro-active class to credits count
     
     // Update Header Buttons
     if (el.headerUpgradeBtn) el.headerUpgradeBtn.classList.add('hidden');
@@ -801,12 +802,16 @@ function updateCreditsUI() {
       el.upgradeBtn.innerHTML = '✨ Pro Active';
       el.upgradeBtn.classList.add('pro-active');
       el.upgradeBtn.disabled = true;
+      el.upgradeBtn.style.position = 'relative'; // Ensure pseudo-element works
+      el.upgradeBtn.style.overflow = 'hidden'; // Ensure pseudo-element works
     }
 
     if (pricingBtn) {
       pricingBtn.innerHTML = '✨ Plan Active';
       pricingBtn.classList.add('pro-active');
       pricingBtn.disabled = true;
+      pricingBtn.style.position = 'relative'; // Ensure pseudo-element works
+      pricingBtn.style.overflow = 'hidden'; // Ensure pseudo-element works
     }
 
     if (el.paywallOverlay) {
