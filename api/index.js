@@ -62,6 +62,12 @@ app.get('/api/debug-sync', async (req, res) => {
 // ─── MIDDLEWARE ───
 app.use(cors());
 
+// VERCEL PATH NORMALIZER: Ensure routes work even if Vercel strips /api
+app.use((req, res, next) => {
+  console.log(`[VERCEL_REQUEST] Path: ${req.path} | Method: ${req.method}`);
+  next();
+});
+
 // Webhook route must come before express.json() for raw body access
 app.post('/api/webhook', express.raw({type: 'application/json'}), async (req, res) => {
   const sig = req.headers['stripe-signature'];
