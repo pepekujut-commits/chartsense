@@ -493,7 +493,11 @@ app.post(['/api/analyze', '/analyze'], async (req, res) => {
       await incrementUsage(usage);
       const updatedUsage = await getUsage(req);
       
-      return res.json({ ...data, creditsRemaining: updatedUsage.isPro ? null : updatedUsage.creditsRemaining });
+      return res.json({ 
+        ...data, 
+        isPro: updatedUsage.isPro,
+        creditsRemaining: updatedUsage.isPro ? '∞' : updatedUsage.creditsRemaining 
+      });
     } else {
       console.error('Gemini API Error:', data);
       const isLeaked = data.error?.message?.toLowerCase().includes('leaked') || data.error?.status === 'PERMISSION_DENIED';

@@ -1195,6 +1195,10 @@ async function startAnalysis() {
     renderResults(result, ticker, tf);
     el.resultsContent.scrollIntoView({ behavior: 'smooth' });
 
+    if (result.isPro !== undefined) {
+      state.isPro = result.isPro;
+    }
+
     if (result.creditsRemaining !== undefined) {
       state.creditsRemaining = result.creditsRemaining;
       updateCreditsUI();
@@ -1369,6 +1373,12 @@ function extractJson(text) {
 
 // ─── RENDERING ───
 function renderResults(data, ticker, tf) {
+  const isPro = isActuallyPro();
+  if (isPro && el.paywallOverlay) {
+    el.paywallOverlay.classList.add('hidden');
+    el.paywallOverlay.style.setProperty('display', 'none', 'important');
+  }
+
   el.resultsPlaceholder.classList.add('hidden');
   el.resultsContent.classList.remove('hidden');
 
