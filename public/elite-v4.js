@@ -786,8 +786,9 @@ function handleFile(file) {
 // ─── CREDITS & STATUS ───
 function updateCreditsUI() {
   const pricingBtn = document.querySelector('#pricing .price-card.featured .btn-primary');
+  const isActuallyPro = state.isPro === true || state.isPro === 'true';
 
-  if (state.isPro) {
+  if (isActuallyPro) {
     el.creditsCount.textContent = '∞';
     el.creditsCount.style.color = 'var(--purple)';
     
@@ -807,7 +808,10 @@ function updateCreditsUI() {
       pricingBtn.disabled = true;
     }
 
-    el.paywallOverlay.classList.add('hidden');
+    if (el.paywallOverlay) {
+      el.paywallOverlay.classList.add('hidden');
+      el.paywallOverlay.style.setProperty('display', 'none', 'important');
+    }
     checkAnalyzeStatus();
     return;
   }
@@ -956,15 +960,18 @@ function checkAnalyzeStatus() {
 
     // ─── PAYWALL OVERRIDE ───
     if (el.paywallOverlay) {
-      if (state.isPro || state.creditsRemaining > 0) {
+      const isActuallyPro = state.isPro === true || state.isPro === 'true';
+      const hasCredits = state.creditsRemaining > 0 || state.creditsRemaining === '∞';
+      
+      if (isActuallyPro || hasCredits) {
         el.paywallOverlay.classList.add('hidden');
-        el.paywallOverlay.style.display = 'none';
-        el.paywallOverlay.style.visibility = 'hidden';
+        el.paywallOverlay.style.setProperty('display', 'none', 'important');
+        el.paywallOverlay.style.setProperty('visibility', 'hidden', 'important');
         el.paywallOverlay.style.pointerEvents = 'none';
       } else if (imageVisible) {
         el.paywallOverlay.classList.remove('hidden');
-        el.paywallOverlay.style.display = 'flex';
-        el.paywallOverlay.style.visibility = 'visible';
+        el.paywallOverlay.style.setProperty('display', 'flex', 'important');
+        el.paywallOverlay.style.setProperty('visibility', 'visible', 'important');
         el.paywallOverlay.style.pointerEvents = 'auto';
       }
     }
