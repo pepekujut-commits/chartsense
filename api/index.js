@@ -424,8 +424,8 @@ app.post(['/api/analyze', '/analyze'], async (req, res) => {
   }
 
   const { model, contents, generationConfig } = req.body;
-  // Standardize to Gemini 2.0 Flash as the primary high-performance model
-  const analysisModel = "gemini-2.0-flash";
+  // Use gemini-3-flash-preview as the default V5 elite model
+  const analysisModel = model === "gemini-2.0-flash" || model === "gemini-1.5-flash" || model === "gemini-3-flash" ? "gemini-3-flash-preview" : (model || "gemini-3-flash-preview");
 
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${analysisModel}:generateContent?key=${API_KEY}`;
@@ -438,7 +438,7 @@ app.post(['/api/analyze', '/analyze'], async (req, res) => {
     
     if (response.ok) {
       if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-        console.log(`[Gemini 2.0 Flash] SUCCESS:`, data.candidates[0].content.parts[0].text);
+        console.log(`[Gemini 3 Flash] SUCCESS:`, data.candidates[0].content.parts[0].text);
         
         // Save to History (V5 Elite)
         const authHeader = req.headers.authorization;

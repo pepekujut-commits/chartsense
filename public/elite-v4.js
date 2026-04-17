@@ -1,7 +1,7 @@
 console.log('elite-v4.js loaded');
 console.log('--- CHARTSENSE BOOTING ---');
 const CONFIG = {
-  DEFAULT_MODEL: 'gemini-2.0-flash',
+  DEFAULT_MODEL: 'gemini-3-flash-preview',
   BACKEND_URL: '/api/analyze',
   STATUS_URL: '/api/status',
   CHECKOUT_URL: '/api/create-checkout-session', // Real Stripe redirect endpoint
@@ -744,6 +744,7 @@ function updateCreditsUI() {
     }
 
     el.paywallOverlay.classList.add('hidden');
+    checkAnalyzeStatus();
     return;
   }
 
@@ -760,6 +761,7 @@ function updateCreditsUI() {
     el.creditsCount.classList.remove('out');
     el.paywallOverlay.classList.add('hidden');
   }
+  checkAnalyzeStatus();
 }
 
 async function handleRefreshStatus() {
@@ -1085,7 +1087,7 @@ async function callGemini(base64Data, ticker, timeframe) {
       ...(state.user ? { 'Authorization': `Bearer ${await state.user.getIdToken()}` } : {})
     },
     body: JSON.stringify({
-      model: "gemini-2.0-flash",
+      model: state.model,
       contents: [{
         parts: [{ text: PROMPT }, { inline_data: { mime_type: "image/jpeg", data: imageData } }]
       }],
@@ -1350,7 +1352,7 @@ async function sendChat() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: "gemini-2.0-flash",
+        model: state.model,
         contents: [{ parts: [{ text: PROMPT }] }],
         generationConfig: { temperature: 0.5 }
       })
@@ -1542,7 +1544,7 @@ function copySetupToClipboard() {
     `🎯 TP 1: ${tp1}\n` +
     `🎯 TP 2: ${tp2}\n` +
     `🎯 TP 3: ${tp3}\n\n` +
-    `Institutional Alpha Generated via Gemini 2.0 Flash.`;
+    `Institutional Alpha Generated via Gemini 3 Flash.`;
 
   navigator.clipboard.writeText(text).then(() => {
     el.copySetupBtn.classList.add('copied');
