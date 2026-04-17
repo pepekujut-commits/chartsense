@@ -210,6 +210,26 @@ async function init() {
     startLiveStats();
     initScreener();
     checkAnalyzeStatus();
+    
+    // V5 Elite: Robustness timer to ensure UI syncs even if events are missed
+    setInterval(checkAnalyzeStatus, 2500);
+    
+    // DEBUG MODE
+    window.CS = { 
+      state, 
+      el, 
+      init, 
+      checkAnalyzeStatus, 
+      startAnalysis,
+      repair: () => {
+        console.log('--- EMERGENCY REPAIR TRIGGERED ---');
+        hydrateElements();
+        checkAnalyzeStatus();
+        updateCreditsUI();
+        updateAuthUI();
+      }
+    };
+    
     console.log("%c CHARTSENSE ELITE V5 ACTIVE ", "background: #8b5cf6; color: white; font-weight: bold; border-radius: 4px; padding: 2px 8px;");
   } catch (err) {
     console.error('CRITICAL: ChartSense initialization failed.', err);
@@ -303,12 +323,14 @@ async function syncStatus() {
     if (!response.ok) throw new Error('Network error');
 
     const data = await response.json();
+    console.log('--- SYNC_STATUS_RESULT ---', data);
     state.creditsRemaining = data.creditsRemaining;
     state.isPro = data.isPro;
     updateCreditsUI();
     checkAnalyzeStatus();
   } catch (e) {
     console.warn('Backend sync deferred: using local state (Pro Trial Mode)');
+    console.error('Sync Error:', e);
     updateCreditsUI();
     checkAnalyzeStatus();
   }
@@ -447,12 +469,16 @@ function setupAuthListener() {
     checkAnalyzeStatus(); // Sync button state early
     
     if (user) {
+      console.log('--- USER LOGGED IN ---');
+      state.user = user;
+      checkAnalyzeStatus(); 
       // Always refresh server-side claims first
       await user.reload().catch(() => {});
       state.user = firebase.auth().currentUser;
 
       // HARD MODE: block all unverified users from staying logged in
       if (!isUserVerified(state.user)) {
+        console.log('--- USER NOT VERIFIED ---');
         try {
           await sendVerificationEmail(state.user);
         } catch (e) {
@@ -465,6 +491,7 @@ function setupAuthListener() {
 
       console.log('Institutional session active (verified):', state.user.email);
       await syncStatus(); // Sync Pro/Credits from Firestore
+      checkAnalyzeStatus(); // Ensure button is synced after Firestore data comes back
 
       // Fallback fulfillment: if checkout succeeded but webhook didn't run yet,
       // finalize Pro activation using the Stripe session_id.
@@ -877,18 +904,76 @@ async function tryFulfillPendingCheckoutSession() {
 }
 
 function checkAnalyzeStatus() {
-  if (!el.analyzeBtn) {
-    el.analyzeBtn = document.getElementById('analyzeBtn');
-  }
-  
-  const hasImage = !!state.selectedFile;
-  const hasCredits = state.isPro || state.creditsRemaining > 0;
-  const isAnalyzing = state.isAnalyzing;
-  
-  console.log(`[Status Check] Image: ${hasImage}, Credits: ${hasCredits}, Analyzing: ${isAnalyzing}, Pro: ${state.isPro}`);
-  
-  if (el.analyzeBtn) {
-    el.analyzeBtn.disabled = !hasImage || !hasCredits || isAnalyzing;
+  try {
+    const btn = document.getElementById('analyzeBtn');
+    const imageVisible = el.previewImg && !el.previewImg.classList.contains('hidden') && el.previewImg.src && el.previewImg.src.length > 100;
+    
+    // ─── UPDATE DIAGNOSTICS ───
+    const d = {
+      user: document.getElementById('diagUser'),
+      pro: document.getElementById('diagPro'),
+      credits: document.getElementById('diagCredits'),
+      image: document.getElementById('diagImage'),
+      button: document.getElementById('diagButton'),
+      error: document.getElementById('diagError')
+    };
+
+    if (d.user) d.user.textContent = state.user ? state.user.email : 'Logged Out';
+    if (d.pro) d.pro.textContent = state.isPro ? 'YES (ELITE)' : 'NO';
+    if (d.credits) d.credits.textContent = state.creditsRemaining;
+    if (d.image) d.image.textContent = imageVisible ? 'READY' : 'MISSING';
+    
+    if (!btn) {
+      if (d.button) d.button.textContent = 'ERROR: BTN NOT FOUND';
+      return;
+    }
+
+    // ─── BRUTE FORCE ENABLER ───
+    if (imageVisible) {
+      // If image is there, we FORCE the button to be alive.
+      btn.disabled = false;
+      btn.style.opacity = "1";
+      btn.style.cursor = "pointer";
+      btn.style.pointerEvents = "auto";
+      btn.style.background = "linear-gradient(135deg, var(--green) 0%, #00b37a 100%)";
+      btn.style.boxShadow = "0 4px 20px rgba(0,229,160,0.3)";
+      
+      // Ensure it has a click handler that actually works
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('--- MANUAL TRIGGER: startAnalysis ---');
+        startAnalysis();
+      };
+
+      if (d.button) d.button.textContent = 'ENABLED (FORCE)';
+    } else {
+      btn.disabled = true;
+      btn.style.opacity = "0.4";
+      btn.style.cursor = "not-allowed";
+      if (d.button) d.button.textContent = 'DISABLED (NO IMAGE)';
+    }
+
+    // ─── PAYWALL OVERRIDE ───
+    if (el.paywallOverlay) {
+      if (state.isPro || state.creditsRemaining > 0) {
+        el.paywallOverlay.classList.add('hidden');
+        el.paywallOverlay.style.display = 'none';
+        el.paywallOverlay.style.visibility = 'hidden';
+        el.paywallOverlay.style.pointerEvents = 'none';
+      } else if (imageVisible) {
+        el.paywallOverlay.classList.remove('hidden');
+        el.paywallOverlay.style.display = 'flex';
+        el.paywallOverlay.style.visibility = 'visible';
+        el.paywallOverlay.style.pointerEvents = 'auto';
+      }
+    }
+  } catch (err) {
+    const errDiv = document.getElementById('diagError');
+    if (errDiv) {
+      errDiv.textContent = `SYNC ERROR: ${err.message}`;
+      errDiv.style.display = 'block';
+    }
   }
 }
 
@@ -1046,14 +1131,42 @@ function exportToPdf() {
 // ─── ANALYSIS LOGIC ───
 async function startAnalysis() {
   if (state.isAnalyzing) return;
+  
+  // Re-sync state with UI right before starting
+  const imageVisible = el.previewImg && !el.previewImg.classList.contains('hidden') && el.previewImg.src && el.previewImg.src.length > 100;
+  
+  if (!imageVisible) {
+    alert("Please upload a chart image first.");
+    return;
+  }
+
+  // FORCE CREDITS FOR PRO USERS (Local Override)
+  if (state.isPro) {
+    state.creditsRemaining = 999;
+  }
 
   // GATING: 3 Free Credits otherwise Premium
-  if (!state.isPro && state.creditsRemaining <= 0) {
+  const hasCredits = state.isPro === true || (typeof state.creditsRemaining === 'number' && state.creditsRemaining > 0);
+  
+  if (!hasCredits) {
     if (!state.user) {
       el.authModal.classList.remove('hidden');
     } else {
       el.checkoutModal.classList.remove('hidden');
     }
+    return;
+  }
+
+  // Robust Image Capture
+  let base64Image = null;
+  if (state.selectedFile) {
+    base64Image = await fileToBase64(state.selectedFile);
+  } else if (imageVisible) {
+    base64Image = el.previewImg.src;
+  }
+
+  if (!base64Image) {
+    alert("Image data corrupted. Please re-upload your chart.");
     return;
   }
 
@@ -1063,7 +1176,6 @@ async function startAnalysis() {
   setLoading(true);
 
   try {
-    const base64Image = await fileToBase64(state.selectedFile);
     const result = await callGemini(base64Image, ticker, tf);
 
     // Play AI Terminal Animation
@@ -1080,10 +1192,11 @@ async function startAnalysis() {
     el.resultsPanel.scrollIntoView({ behavior: 'smooth' });
 
   } catch (err) {
-    console.error('Analysis failed:', err);
+    console.error('CRITICAL Analysis Error:', err);
     showError(err.message);
   } finally {
     setLoading(false);
+    checkAnalyzeStatus(); // Refresh button state
   }
 }
 

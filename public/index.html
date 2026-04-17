@@ -6,12 +6,31 @@
   <meta name="description" content="ChartSense AI — The premier institutional-grade trading terminal. Get real-time technical analysis, AI-powered trade setups, and professional market structure insights powered by Gemini 3 Flash." />
   <meta name="keywords" content="AI trading, technical analysis, crypto signals, stock charts, institutional trading, Gemini AI, trading terminal" />
   <title>ChartSense AI — Professional Institutional Analysis</title>
-  <link rel="stylesheet" href="elite-v4.css?v=2026.04.17-profix">
+  <link rel="stylesheet" href="elite-v4.css?v=2026.04.17-ULTRA-v1">
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
+  <style>
+    /* EMERGENCY INLINE FIX FOR Z-INDEX AND BLOCKING */
+    #analyzeBtn {
+      position: relative !important;
+      z-index: 10001 !important;
+      pointer-events: auto !important;
+    }
+    #paywallOverlay {
+      z-index: 9999 !important;
+    }
+    .modal-overlay {
+      z-index: 11000 !important;
+    }
+    #diagPanel {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+  </style>
 </head>
 <body>
   <div class="bg-grid"></div>
@@ -775,6 +794,17 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
-  <script src="elite-v4.js?v=2026.04.17-v5elite-fix"></script>
+  <!-- ─── EMERGENCY DIAGNOSTICS (V5) ─── -->
+  <div id="diagPanel" style="position: fixed; bottom: 20px; right: 20px; background: rgba(0,0,0,0.9); border: 1px solid var(--purple); padding: 12px; border-radius: 8px; z-index: 10000; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #fff; pointer-events: none; transition: opacity 0.3s;">
+    <div style="color: var(--purple); font-weight: bold; margin-bottom: 5px;">SYSTEM DIAGNOSTICS</div>
+    <div>USER: <span id="diagUser">Logged Out</span></div>
+    <div>PRO: <span id="diagPro">No</span></div>
+    <div>CREDITS: <span id="diagCredits">3</span></div>
+    <div>IMAGE: <span id="diagImage">None</span></div>
+    <div>BUTTON: <span id="diagButton">Disabled</span></div>
+    <div id="diagError" style="color: var(--red); margin-top: 5px; display: none;"></div>
+  </div>
+
+  <script src="elite-v4.js?v=2026.04.17-ULTRA-RECOVERY-FINAL"></script>
 </body>
 </html>
